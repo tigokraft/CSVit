@@ -6,7 +6,7 @@ use crate::backend::paged_reader::PagedReader;
 use crate::backend::editor::EditBuffer;
 use crate::backend::parser::CsvParser;
 
-use crate::backend::parser::CsvParser;
+
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Theme {
