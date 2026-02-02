@@ -182,10 +182,53 @@ impl eframe::App for GuiApp {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.heading("Theme");
                         egui::ComboBox::from_id_salt("theme_selector")
-                            .selected_text(self.settings.theme.name())
+                            .selected_text(match &self.settings.theme {
+                                Theme::Custom(idx) => {
+                                    self.settings.custom_themes.get(*idx)
+                                        .map(|t| t.name.as_str())
+                                        .unwrap_or("Custom")
+                                }
+                                t => t.name(),
+                            })
                             .show_ui(ui, |ui| {
-                                for theme in Theme::all() {
+                                for theme in Theme::builtin_all() {
                                     ui.selectable_value(&mut self.settings.theme, *theme, theme.name());
+                                }
+                                ui.separator();
+                                for (i, custom) in self.settings.custom_themes.iter().enumerate() {
+                                    ui.selectable_value(&mut self.settings.theme, Theme::Custom(i), &custom.name);
+                                }
+                            });
+                        
+                        ui.horizontal(|ui| {
+                            if ui.button("📂 Import Theme").clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter("JSON Theme", &["json"])
+                                    .pick_file()
+                                {
+                                    if let Ok(content) = std::fs::read_to_string(&path) {
+                                        if let Ok(theme) = serde_json::from_str::<crate::backend::settings::CustomTheme>(&content) {
+                                            self.settings.custom_themes.push(theme);
+                                            self.settings.save();
+                                        }
+                                    }
+                                }
+                            }
+                            if ui.button("🔄 Reload Themes").clicked() {
+                                self.settings.load_custom_themes();
+                            }
+                        });
+                        
+                        ui.separator();
+                        ui.heading("Font");
+                        egui::ComboBox::from_id_salt("font_selector")
+                            .selected_text(&self.settings.font_family)
+                            .show_ui(ui, |ui| {
+                                for font in Settings::available_fonts() {
+                                    let selected = self.settings.font_family == font;
+                                    if ui.selectable_label(selected, font).clicked() {
+                                        self.settings.font_family = font.to_string();
+                                    }
                                 }
                             });
                         
@@ -774,6 +817,23 @@ fn apply_style(ctx: &egui::Context, settings: &Settings) {
             visuals.selection.bg_fill = egui::Color32::from_rgb(203, 166, 247);
             visuals.extreme_bg_color = egui::Color32::from_rgb(24, 24, 37);
             ctx.set_visuals(visuals);
+        }
+        Theme::Custom(idx) => {
+            if let Some(custom) = settings.custom_themes.get(idx) {
+                let mut visuals = egui::Visuals::dark();
+                visuals.window_corner_radius = 8.0.into();
+                visuals.panel_fill = egui::Color32::from_rgb(custom.bg_primary[0], custom.bg_primary[1], custom.bg_primary[2]);
+                visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(custom.bg_primary[0], custom.bg_primary[1], custom.bg_primary[2]);
+                visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(custom.bg_secondary[0], custom.bg_secondary[1], custom.bg_secondary[2]);
+                visuals.widgets.active.bg_fill = egui::Color32::from_rgb(custom.accent[0], custom.accent[1], custom.accent[2]);
+                visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(custom.selection[0], custom.selection[1], custom.selection[2]);
+                visuals.selection.bg_fill = egui::Color32::from_rgb(custom.accent[0], custom.accent[1], custom.accent[2]);
+                visuals.extreme_bg_color = egui::Color32::from_rgb(custom.bg_secondary[0], custom.bg_secondary[1], custom.bg_secondary[2]);
+                visuals.override_text_color = Some(egui::Color32::from_rgb(custom.text_primary[0], custom.text_primary[1], custom.text_primary[2]));
+                ctx.set_visuals(visuals);
+            } else {
+                ctx.set_visuals(egui::Visuals::dark());
+            }
         }
     }
 }
