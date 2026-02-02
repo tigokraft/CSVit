@@ -767,55 +767,93 @@ fn apply_style(ctx: &egui::Context, settings: &Settings) {
         Theme::Dark => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
-            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(20, 20, 25); 
+            visuals.panel_fill = egui::Color32::from_rgb(18, 18, 22);
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(25, 25, 30);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(35, 35, 42);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(50, 50, 60);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(70, 130, 180);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(60, 100, 150);
+            visuals.faint_bg_color = egui::Color32::from_rgb(30, 30, 38);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(12, 12, 16);
             ctx.set_visuals(visuals);
         }
         Theme::Light => {
-            ctx.set_visuals(egui::Visuals::light());
+            let mut visuals = egui::Visuals::light();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(248, 248, 252);
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(240, 240, 245);
+            visuals.faint_bg_color = egui::Color32::from_rgb(235, 235, 242);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(180, 210, 240);
+            ctx.set_visuals(visuals);
         }
         Theme::Monokai => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(39, 40, 34);
             visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(39, 40, 34);
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(49, 50, 44);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(62, 63, 55);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(166, 226, 46);
             visuals.selection.bg_fill = egui::Color32::from_rgb(73, 72, 62);
+            visuals.faint_bg_color = egui::Color32::from_rgb(45, 46, 40);
             visuals.extreme_bg_color = egui::Color32::from_rgb(30, 31, 28);
+            visuals.override_text_color = Some(egui::Color32::from_rgb(248, 248, 242));
             ctx.set_visuals(visuals);
         }
         Theme::Solarized => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(0, 43, 54);
             visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0, 43, 54);
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(7, 54, 66);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(88, 110, 117);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(38, 139, 210);
             visuals.selection.bg_fill = egui::Color32::from_rgb(38, 139, 210);
+            visuals.faint_bg_color = egui::Color32::from_rgb(7, 54, 66);
             visuals.extreme_bg_color = egui::Color32::from_rgb(0, 36, 46);
+            visuals.override_text_color = Some(egui::Color32::from_rgb(131, 148, 150));
             ctx.set_visuals(visuals);
         }
         Theme::Nord => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(46, 52, 64);
             visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(46, 52, 64);
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(59, 66, 82);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(67, 76, 94);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(136, 192, 208);
             visuals.selection.bg_fill = egui::Color32::from_rgb(136, 192, 208);
+            visuals.faint_bg_color = egui::Color32::from_rgb(59, 66, 82);
             visuals.extreme_bg_color = egui::Color32::from_rgb(36, 42, 54);
+            visuals.override_text_color = Some(egui::Color32::from_rgb(236, 239, 244));
             ctx.set_visuals(visuals);
         }
         Theme::Dracula => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(40, 42, 54);
             visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(40, 42, 54);
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(68, 71, 90);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(98, 101, 120);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(189, 147, 249);
             visuals.selection.bg_fill = egui::Color32::from_rgb(189, 147, 249);
+            visuals.faint_bg_color = egui::Color32::from_rgb(55, 57, 70);
             visuals.extreme_bg_color = egui::Color32::from_rgb(33, 34, 44);
+            visuals.override_text_color = Some(egui::Color32::from_rgb(248, 248, 242));
             ctx.set_visuals(visuals);
         }
         Theme::Catppuccin => {
             let mut visuals = egui::Visuals::dark();
             visuals.window_corner_radius = 8.0.into();
+            visuals.panel_fill = egui::Color32::from_rgb(30, 30, 46);
             visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(30, 30, 46);
             visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(49, 50, 68);
+            visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(69, 71, 90);
+            visuals.widgets.active.bg_fill = egui::Color32::from_rgb(203, 166, 247);
             visuals.selection.bg_fill = egui::Color32::from_rgb(203, 166, 247);
+            visuals.faint_bg_color = egui::Color32::from_rgb(45, 45, 60);
             visuals.extreme_bg_color = egui::Color32::from_rgb(24, 24, 37);
+            visuals.override_text_color = Some(egui::Color32::from_rgb(205, 214, 244));
             ctx.set_visuals(visuals);
         }
         Theme::Custom(idx) => {
@@ -825,9 +863,14 @@ fn apply_style(ctx: &egui::Context, settings: &Settings) {
                 visuals.panel_fill = egui::Color32::from_rgb(custom.bg_primary[0], custom.bg_primary[1], custom.bg_primary[2]);
                 visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(custom.bg_primary[0], custom.bg_primary[1], custom.bg_primary[2]);
                 visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(custom.bg_secondary[0], custom.bg_secondary[1], custom.bg_secondary[2]);
-                visuals.widgets.active.bg_fill = egui::Color32::from_rgb(custom.accent[0], custom.accent[1], custom.accent[2]);
                 visuals.widgets.hovered.bg_fill = egui::Color32::from_rgb(custom.selection[0], custom.selection[1], custom.selection[2]);
+                visuals.widgets.active.bg_fill = egui::Color32::from_rgb(custom.accent[0], custom.accent[1], custom.accent[2]);
                 visuals.selection.bg_fill = egui::Color32::from_rgb(custom.accent[0], custom.accent[1], custom.accent[2]);
+                visuals.faint_bg_color = egui::Color32::from_rgb(
+                    custom.stripe.map(|s| s[0]).unwrap_or(custom.bg_secondary[0]),
+                    custom.stripe.map(|s| s[1]).unwrap_or(custom.bg_secondary[1]),
+                    custom.stripe.map(|s| s[2]).unwrap_or(custom.bg_secondary[2]),
+                );
                 visuals.extreme_bg_color = egui::Color32::from_rgb(custom.bg_secondary[0], custom.bg_secondary[1], custom.bg_secondary[2]);
                 visuals.override_text_color = Some(egui::Color32::from_rgb(custom.text_primary[0], custom.text_primary[1], custom.text_primary[2]));
                 ctx.set_visuals(visuals);
@@ -837,3 +880,4 @@ fn apply_style(ctx: &egui::Context, settings: &Settings) {
         }
     }
 }
+
