@@ -23,7 +23,7 @@ To build and run this application, you need the Rust toolchain installed on your
 
 1. Clone the repository:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/tigokraft/CSV-Editor.git
    cd csv_editor
    ```
 
@@ -54,7 +54,7 @@ You can open a file in two ways:
 - **View Modes**: Use the toggle in the top-right corner to switch between Table and Text views.
 - **Export**: Click the "Export JSON" button to save the current CSV data as a JSON file.
 
-## Tech Stack
+## Stack
 - **Language**: Rust
 - **GUI Framework**: [egui](https://github.com/emilk/egui) / [eframe](https://github.com/emilk/egui/tree/master/crates/eframe)
 - **CSV Parsing**: [csv](https://github.com/BurntSushi/rust-csv)
