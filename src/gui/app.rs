@@ -21,7 +21,6 @@ pub struct EditorState {
     editing_cell: Option<(usize, usize)>,
     filename: String,
     word_wrap: bool,
-    word_wrap: bool,
     json_modal: Option<(usize, String)>,
     num_columns: usize,
     selected_cell: Option<(usize, usize)>,
@@ -80,7 +79,6 @@ impl GuiApp {
                         input_buffer: String::new(),
                         editing_cell: None,
                         filename: path_str,
-                        word_wrap: false,
                         word_wrap: false,
                         json_modal: None,
                         num_columns: arc_loader.num_columns(),
@@ -321,7 +319,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                                 ui.painter().rect_stroke(
                                                     response.rect,
                                                     0.0,
-                                                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 255))
+                                                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 255)),
+                                                    egui::StrokeKind::Middle
                                                 );
                                                 response.scroll_to_me(Some(egui::Align::Center));
                                             }
