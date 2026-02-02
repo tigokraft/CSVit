@@ -4,3 +4,6 @@ pub mod parser;
 pub mod editor;
 pub mod export;
 pub mod settings;
+pub mod formatting;
+pub mod csvi;
+pub mod grid;
