@@ -513,6 +513,13 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                     if ui.button("Cancel").clicked() {
                         state.edit_modal = None;
                     }
+                    if ui.button("Beautify JSON").clicked() {
+                        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Ok(pretty) = serde_json::to_string_pretty(&value) {
+                                text = pretty;
+                            }
+                        }
+                    }
                 });
             });
         
