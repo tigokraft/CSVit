@@ -5,18 +5,27 @@ use std::path::Path;
 use std::sync::Arc;
 
 pub struct CsvLoader {
-    mmap: Arc<Mmap>,
+    mmap: Option<Arc<Mmap>>,
     /// Start byte offset of each record
     record_offsets: Vec<u64>,
     /// Total number of records (rows)
     total_records: usize,
+    /// Number of columns (for empty mode)
+    num_columns_override: Option<usize>,
 }
 
 impl CsvLoader {
+    /// Create an empty CSV loader for new file creation
+    pub fn empty(cols: usize, rows: usize) -> Self {
+        Self {
+            mmap: None,
+            record_offsets: (0..rows).map(|i| i as u64).collect(),
+            total_records: rows,
+            num_columns_override: Some(cols),
+        }
+    }
     pub fn new(path: &Path) -> Result<Self> {
         let file = File::open(path).with_context(|| format!("Failed to open file: {:?}", path))?;
-        // Safety: We assume the file is not modified by other processes while we read.
-        // For a text editor, this is a standard risk we accept, or we'd lock it (but O/S locks vary).
         let mmap = unsafe { Mmap::map(&file).context("Failed to memory map file")? };
         let mmap = Arc::new(mmap);
 
@@ -25,7 +34,8 @@ impl CsvLoader {
         Ok(Self {
             record_offsets: offsets.clone(),
             total_records: offsets.len(),
-            mmap,
+            mmap: Some(mmap),
+            num_columns_override: None,
         })
     }
 
@@ -76,30 +86,24 @@ impl CsvLoader {
     }
 
     pub fn get_record_line(&self, index: usize) -> Option<&[u8]> {
+        let mmap = self.mmap.as_ref()?;
+        
         if index >= self.record_offsets.len() {
             return None;
         }
 
         let start = self.record_offsets[index] as usize;
         let end = if index + 1 < self.record_offsets.len() {
-            // End is the start of next line - 1 (to exclude newline potentially? No, include it to keep raw)
-            // Actually, we usually want the raw bytes of the line including the newline chars for editing fidelity?
-            // Or just the content?
-            // Let's return the slice up to the next record start.
-            // But wait, the next record start includes the previous newline?
-            // our logic: offsets push (i+1). So i was the \n.
-            // So [start .. next_start] includes the \n at the end of the line.
             self.record_offsets[index + 1] as usize
         } else {
-            self.mmap.len()
+            mmap.len()
         };
 
-        if start >= self.mmap.len() || start >= end {
-            // Empty last line or error
+        if start >= mmap.len() || start >= end {
             return None;
         }
 
-        Some(&self.mmap[start..end])
+        Some(&mmap[start..end])
     }
     
     pub fn total_records(&self) -> usize {
@@ -107,10 +111,11 @@ impl CsvLoader {
     }
 
     pub fn num_columns(&self) -> usize {
+        if let Some(cols) = self.num_columns_override {
+            return cols;
+        }
+        
         if let Some(line) = self.get_record_line(0) {
-            // Simple comma counting for now, respecting quotes would be better but this is a start.
-            // Actually, let's use the parser logic if we can, or just count.
-            // Since we don't have the parser here, let's do a quick scan.
             let mut count = 1;
             let mut in_quote = false;
             for &b in line {

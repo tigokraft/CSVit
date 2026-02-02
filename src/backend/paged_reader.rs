@@ -13,7 +13,14 @@ impl PagedReader {
     pub fn new(loader: Arc<CsvLoader>) -> Self {
         Self {
             loader,
-            page_size: 100, // Default page size
+            page_size: 100,
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            loader: Arc::new(CsvLoader::empty(0, 0)),
+            page_size: 100,
         }
     }
 
