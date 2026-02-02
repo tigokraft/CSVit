@@ -180,6 +180,42 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
 
     egui::CentralPanel::default().show(ctx, |ui| {
          let total_rows = state.loader.total_records();
+         let num_cols = state.num_columns;
+         
+         // Keyboard Navigation
+         if state.editing_cell.is_none() {
+             if let Some((r, c)) = state.selected_cell {
+                 if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                     state.selected_cell = Some((r.min(total_rows - 1) + 1, c));
+                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                      state.selected_cell = Some((r.saturating_sub(1), c));
+                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
+                      state.selected_cell = Some((r, (c + 1).min(num_cols - 1)));
+                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                      state.selected_cell = Some((r, c.saturating_sub(1)));
+                 } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                      state.editing_cell = Some((r, c));
+                      // Load content into buffer
+                      let line_content = match state.reader.get_rows(r, 1) {
+                            Ok(v) => v.get(0).cloned().unwrap_or_default(),
+                            Err(_) => String::new(),
+                      };
+                      let fields = CsvParser::parse_line(&line_content).unwrap_or_default();
+                      let text = if let Some(edit) = state.editor.get_edit(r, c) {
+                          edit.clone()
+                      } else {
+                          fields.get(c).cloned().unwrap_or_default()
+                      };
+                      state.input_buffer = text;
+                 }
+             } else {
+                 // Initial selection on arrow key
+                  if ui.input(|i| i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft)) {
+                      state.selected_cell = Some((0, 0));
+                  }
+             }
+         }
+
          let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
          // Increase row height if wrapping? No, virtual lists usually need fixed height or estimation.
          // For now, let's keep fixed height but allow internal wrapping if space per cell permits?
