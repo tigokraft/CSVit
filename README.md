@@ -12,7 +12,14 @@ A high-performance portable, modern CSVit built with Rust and egui. Designed to 
     - Export the entire file to JSON.
     - Right-click any row to view it as a JSON object.
 - **Word Wrap**: Toggle word wrapping for long cell content.
-- **Customization**: Dark/Light/System themes, adjustable font size and row height.
+- **Graph Mode**: Visualize your data with X/Y scatter and line plots. Select any two columns to generate instantaneous graphs.
+- **Advanced Editing**:
+    - **Edit Popup**: Toggle a dedicated text editor popup for long content (enable in Settings).
+    - **JSON Beautifier**: Built-in JSON formatter within the edit popup for easy editing of nested data.
+- **Customization**: 
+    - **Themes**: Switch between Dark, Light, or System themes.
+    - **Appearance**: Adjustable font size and row height.
+    - **Persistence**: All settings are automatically saved and restored.
 - **Cross-Platform**: Runs natively on Windows, macOS, and Linux.
 
 ## Platform Support
