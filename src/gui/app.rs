@@ -42,7 +42,7 @@ impl GuiApp {
         let state = if let (Some(loader), Some(name)) = (loader, filename) {
              AppState::Editor(EditorState {
                 loader: loader.clone(),
-                reader: PagedReader::new(loader),
+                reader: PagedReader::new(loader.clone()),
                 editor: EditBuffer::new(),
                 view_mode: ViewMode::Table,
                 input_buffer: String::new(),
@@ -50,6 +50,8 @@ impl GuiApp {
                 filename: name,
                 word_wrap: false,
                 json_modal: None,
+                num_columns: loader.num_columns(),
+                selected_cell: None,
             })
         } else {
             AppState::Welcome
@@ -73,7 +75,7 @@ impl GuiApp {
                     let arc_loader = Arc::new(loader);
                     self.state = AppState::Editor(EditorState {
                         loader: arc_loader.clone(),
-                        reader: PagedReader::new(arc_loader),
+                        reader: PagedReader::new(arc_loader.clone()),
                         editor: EditBuffer::new(),
                         view_mode: ViewMode::Table,
                         input_buffer: String::new(),
@@ -109,7 +111,7 @@ impl eframe::App for GuiApp {
                             let arc_loader = Arc::new(loader);
                             self.state = AppState::Editor(EditorState {
                                 loader: arc_loader.clone(),
-                                reader: PagedReader::new(arc_loader),
+                                reader: PagedReader::new(arc_loader.clone()),
                                 editor: EditBuffer::new(),
                                 view_mode: ViewMode::Table,
                                 input_buffer: String::new(),
