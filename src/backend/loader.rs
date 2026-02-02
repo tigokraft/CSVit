@@ -125,6 +125,52 @@ impl CsvLoader {
             0
         }
     }
+
+    pub fn estimate_column_widths(&self) -> Vec<f32> {
+        let num_cols = self.num_columns();
+        if num_cols == 0 {
+            return Vec::new();
+        }
+
+        let mut max_lens = vec![10; num_cols]; // Start with min width of 10 chars
+        
+        // Scan first 100 lines
+        let records_to_scan = std::cmp::min(self.total_records(), 100);
+        
+        for i in 0..records_to_scan {
+            if let Some(line) = self.get_record_line(i) {
+                // Quick parse
+                let mut col_idx = 0;
+                let mut in_quote = false;
+                let mut current_len = 0;
+                
+                for &b in line {
+                    match b {
+                        b'"' => in_quote = !in_quote,
+                        b',' => {
+                            if !in_quote {
+                                if col_idx < num_cols {
+                                    max_lens[col_idx] = std::cmp::max(max_lens[col_idx], current_len);
+                                }
+                                col_idx += 1;
+                                current_len = 0;
+                            } else {
+                                current_len += 1;
+                            }
+                        }
+                        _ => current_len += 1,
+                    }
+                }
+                // Last column
+                if col_idx < num_cols {
+                     max_lens[col_idx] = std::cmp::max(max_lens[col_idx], current_len);
+                }
+            }
+        }
+        
+        // Convert chars to approx pixels (average char width ~8px + padding)
+        max_lens.into_iter().map(|len| (len as f32 * 8.0).max(50.0).min(400.0)).collect()
+    }
 }
 
 #[cfg(test)]
