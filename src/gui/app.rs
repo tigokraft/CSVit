@@ -99,6 +99,38 @@ impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         apply_style(ctx); // Apply simplified shadcn-like style
 
+        // Handle Drag & Drop
+        if !ctx.input(|i| i.raw.dropped_files.is_empty()) {
+            let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+            if let Some(file) = dropped_files.first() {
+                if let Some(path) = &file.path {
+                     let path_str = path.to_string_lossy().to_string();
+                     self.state = AppState::Loading(path_str.clone());
+                     match CsvLoader::new(path) {
+                        Ok(loader) => {
+                            let arc_loader = Arc::new(loader);
+                            self.state = AppState::Editor(EditorState {
+                                loader: arc_loader.clone(),
+                                reader: PagedReader::new(arc_loader),
+                                editor: EditBuffer::new(),
+                                view_mode: ViewMode::Table,
+                                input_buffer: String::new(),
+                                editing_cell: None,
+                                filename: path_str,
+                                word_wrap: false,
+                                json_modal: None,
+                                num_columns: arc_loader.num_columns(),
+                                selected_cell: None,
+                            });
+                        }
+                        Err(e) => {
+                            self.state = AppState::Error(format!("Failed to load file: {}", e));
+                        }
+                    }
+                }
+            }
+        }
+
         let mut next_state = None;
 
         match &mut self.state {
