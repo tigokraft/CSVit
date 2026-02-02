@@ -24,6 +24,7 @@ pub struct EditorState {
     word_wrap: bool,
     json_modal: Option<(usize, String)>,
     num_columns: usize,
+    selected_cell: Option<(usize, usize)>,
 }
 
 pub enum AppState {
@@ -83,6 +84,7 @@ impl GuiApp {
                         word_wrap: false,
                         json_modal: None,
                         num_columns: arc_loader.num_columns(),
+                        selected_cell: None,
                     });
                 }
                 Err(e) => {
