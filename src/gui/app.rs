@@ -103,7 +103,46 @@ impl GuiApp {
 
 impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        apply_style(ctx); // Apply simplified shadcn-like style
+        apply_style(ctx, &self.settings); 
+
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+             ui.horizontal(|ui| {
+                 ui.menu_button("File", |ui| {
+                     if ui.button("Open").clicked() {
+                         self.open_file_dialog();
+                         ui.close_menu();
+                     }
+                 });
+                 if ui.button("Settings").clicked() {
+                     self.show_settings = true;
+                 }
+             });
+        });
+
+        // Settings Window
+        if self.show_settings {
+             let mut open = true;
+             egui::Window::new("Settings")
+                .open(&mut open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.label("Theme");
+                    egui::ComboBox::from_id_salt("theme_selector")
+                        .selected_text(match self.settings.theme {
+                            Theme::System => "System",
+                            Theme::Dark => "Dark",
+                            Theme::Light => "Light",
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.settings.theme, Theme::System, "System");
+                            ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
+                            ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
+                        });
+                });
+             if !open {
+                 self.show_settings = false;
+             }
+        }
 
         // Handle Drag & Drop
         if !ctx.input(|i| i.raw.dropped_files.is_empty()) {
@@ -178,7 +217,7 @@ impl eframe::App for GuiApp {
                         ui.heading(format!("Loading {}...", name));
                         ui.spinner();
                     });
-                 });
+                });
             }
             AppState::Editor(state) => {
                 render_editor(state, ctx);
@@ -412,18 +451,21 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
     }
 }
 
-fn apply_style(ctx: &egui::Context) {
-    // Dark mode by default for that "premium" feel (or system default)
-    // ctx.set_visuals(egui::Visuals::dark()); 
-
-    let mut visuals = egui::Visuals::dark();
-    visuals.window_corner_radius = 8.0.into();
-    visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(20, 20, 25); // Really dark background
-    visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 40, 50));
-    
-    visuals.widgets.inactive.corner_radius = 4.0.into();
-    visuals.widgets.active.corner_radius = 4.0.into();
-    visuals.widgets.hovered.corner_radius = 4.0.into();
-
-    ctx.set_visuals(visuals);
+fn apply_style(ctx: &egui::Context, settings: &Settings) {
+    match settings.theme {
+        Theme::System => {
+            // Respect system, so don't force visuals unless you want to override some specifics
+            // Reset to default then we can tweak
+             ctx.set_visuals(egui::Visuals::default()); 
+        }
+        Theme::Dark => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(20, 20, 25); 
+            ctx.set_visuals(visuals);
+        }
+        Theme::Light => {
+             ctx.set_visuals(egui::Visuals::light());
+        }
+    }
 }
