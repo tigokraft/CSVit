@@ -1,6 +1,6 @@
-# CSV Editor
+# CSVit
 
-A high-performance, modern CSV editor built with Rust and egui. Designed to handle large files efficiently using memory mapping.
+A high-performance portable, modern CSV editor built with Rust and egui. Designed to handle large files efficiently using memory mapping.
 
 ## Features
 
@@ -23,8 +23,8 @@ To build and run this application, you need the Rust toolchain installed on your
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/tigokraft/CSV-Editor.git
-   cd csv_editor
+   git clone https://github.com/tigokraft/CSVit.git
+   cd CSVit
    ```
 
 2. Build and run in release mode (recommended for best performance):
@@ -36,7 +36,7 @@ To build and run this application, you need the Rust toolchain installed on your
    ```bash
    cargo build --release
    ```
-   The binary will be located at `target/release/csv_editor.exe`.
+   The binary will be located at `target/release/`.
 
 ## Usage
 
