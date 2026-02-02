@@ -129,7 +129,6 @@ impl GuiApp {
     }
 }
 
-impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         apply_style(ctx, &self.settings); 
 
@@ -166,6 +165,15 @@ impl eframe::App for GuiApp {
                             ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
                             ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
                         });
+                    
+                    ui.separator();
+                    ui.label("Appearance");
+                    ui.add(egui::Slider::new(&mut self.settings.font_size, 10.0..=24.0).text("Font Size"));
+                    ui.add(egui::Slider::new(&mut self.settings.row_height, 20.0..=60.0).text("Row Height"));
+                    
+                    ui.separator();
+                    ui.label("Behavior");
+                    ui.checkbox(&mut self.settings.use_edit_modal, "Use Popup for Editing");
                 });
              if !open {
                  self.show_settings = false;
@@ -250,7 +258,7 @@ impl eframe::App for GuiApp {
                 });
             }
             AppState::Editor(state) => {
-                render_editor(state, ctx);
+                render_editor(state, ctx, &self.settings);
             }
         }
 
@@ -260,8 +268,19 @@ impl eframe::App for GuiApp {
     }
 }
 
-fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
+fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settings) {
+    // Override font size
+    let mut style = (*ctx.style()).clone();
+    style.text_styles.iter_mut().for_each(|(_, font_id)| {
+        font_id.size = settings.font_size;
+    });
+    // This is a bit heavy to do every frame, but fine for now. 
+    // Ideally we'd set this once or in apply_style if it wasn't varying per-frame potentially.
+    // Actually apply_style is better, but here we can scope it to the editor panel if we wanted.
+    // Let's execute it on the ui scope.
+
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+        ui.style_mut().text_styles = style.text_styles.clone(); // Apply font
         ui.add_space(4.0);
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("CSVit").strong());
@@ -286,12 +305,27 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
     });
 
     egui::CentralPanel::default().show(ctx, |ui| {
+         ui.style_mut().text_styles = style.text_styles.clone(); // Apply font
          let total_rows = state.loader.total_records();
          let num_cols = state.num_columns;
          let mut scroll_target = None;
          
+         // Helper to load content
+         let load_content = |state: &mut EditorState, r: usize, c: usize| -> String {
+              let line_content = match state.reader.get_rows(r, 1) {
+                    Ok(v) => v.get(0).cloned().unwrap_or_default(),
+                    Err(_) => String::new(),
+              };
+              let fields = CsvParser::parse_line(&line_content).unwrap_or_default();
+              if let Some(edit) = state.editor.get_edit(r, c) {
+                  edit.clone()
+              } else {
+                  fields.get(c).cloned().unwrap_or_default()
+              }
+         };
+
          // Keyboard Navigation
-         if state.editing_cell.is_none() {
+         if state.editing_cell.is_none() && state.edit_modal.is_none() {
              if let Some((r, c)) = state.selected_cell {
                  if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
                      let next_row = (r.min(total_rows - 1) + 1).min(total_rows - 1);
@@ -308,19 +342,13 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                       state.selected_cell = Some((r, c.saturating_sub(1)));
                       scroll_target = Some(r);
                  } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                      state.editing_cell = Some((r, c));
-                      // Load content into buffer
-                      let line_content = match state.reader.get_rows(r, 1) {
-                            Ok(v) => v.get(0).cloned().unwrap_or_default(),
-                            Err(_) => String::new(),
-                      };
-                      let fields = CsvParser::parse_line(&line_content).unwrap_or_default();
-                      let text = if let Some(edit) = state.editor.get_edit(r, c) {
-                          edit.clone()
+                      if settings.use_edit_modal {
+                          let text = load_content(state, r, c);
+                          state.edit_modal = Some((r, c, text));
                       } else {
-                          fields.get(c).cloned().unwrap_or_default()
-                      };
-                      state.input_buffer = text;
+                          state.editing_cell = Some((r, c));
+                          state.input_buffer = load_content(state, r, c);
+                      }
                  }
              } else {
                  // Initial selection on arrow key
@@ -331,20 +359,10 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
              }
          }
 
-         let text_height = egui::TextStyle::Body.resolve(ui.style()).size;
-         // Increase row height if wrapping? No, virtual lists usually need fixed height or estimation.
-         // For now, let's keep fixed height but allow internal wrapping if space per cell permits?
-         // Actually, if we wrap, row height varies. `TableBuilder` supports `rows` with fixed height.
-         // We might need `body.heterogeneous_rows` if we really want variable height, but that's expensive to calc.
-         // Let's stick to fixed height for now, but allow wrapping within that height (e.g. 2 lines?). 
-         // Or just basic wrapping.
-         let row_height = if state.word_wrap { text_height * 2.0 + 12.0 } else { text_height + 12.0 };
+         let row_height = settings.row_height;
 
          match state.view_mode {
             ViewMode::Table => {
-                // TableBuilder inside ScrollArea for horizontal scrolling if needed?
-                // Actually TableBuilder has `.scroll()`.
-                
                 egui::ScrollArea::horizontal().show(ui, |ui| {
                     let mut builder = TableBuilder::new(ui)
                         .striped(true)
@@ -416,20 +434,36 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                                     egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 255)),
                                                     egui::StrokeKind::Middle
                                                 );
-                                                // Removed scroll_to_me to prevent glitching. 
-                                                // Scroll is handled by TableBuilder via scroll_target.
                                             }
 
                                             if response.clicked() {
                                                 state.selected_cell = Some((row_index, col_index));
                                             }
-
+                                            
                                             if response.double_clicked() {
-                                                state.editing_cell = Some((row_index, col_index));
-                                                state.input_buffer = text.clone();
+                                                if settings.use_edit_modal {
+                                                    // Load full content for modal
+                                                    // We need to re-read essentially, or copy logic.
+                                                    // Since we are inside the closure, we can't easily call `load_content` helper 
+                                                    // if it borrows key parts. But we have `text` here!
+                                                    state.edit_modal = Some((row_index, col_index, text.clone()));
+                                                } else {
+                                                    state.editing_cell = Some((row_index, col_index));
+                                                    state.input_buffer = text.clone();
+                                                }
                                             }
                                             
                                             response.context_menu(|ui| {
+                                                 if ui.button("Edit Cell").clicked() {
+                                                     // Always allow explicit edit via menu
+                                                     if settings.use_edit_modal {
+                                                          state.edit_modal = Some((row_index, col_index, text.clone()));
+                                                     } else {
+                                                          state.editing_cell = Some((row_index, col_index));
+                                                          state.input_buffer = text.clone();
+                                                     }
+                                                     ui.close();
+                                                 }
                                                 if ui.button("View Row as JSON").clicked() {
                                                     // Collect all fields for this row
                                                     let mut map = serde_json::Map::new();
@@ -466,7 +500,37 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
          }
     });
 
-    // Render Modal
+    // Render Edit Modal
+    if let Some((r, c, mut text)) = state.edit_modal.clone() {
+        let mut open = true;
+        egui::Window::new(format!("Edit Cell ({}, {})", r, c))
+            .open(&mut open)
+            .resize(|r| r.fixed_size(egui::vec2(400.0, 300.0))) 
+            .show(ctx, |ui| {
+                ui.add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).desired_rows(10));
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        state.editor.add_edit(r, c, text.clone());
+                        state.edit_modal = None;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        state.edit_modal = None;
+                    }
+                });
+            });
+        
+        if open {
+             // Update the state text if changed (so typing works)
+             // But wait, `text` is a local clone. We need to write back to `state.edit_modal`.
+             if let Some((_, _, ref mut stored_text)) = state.edit_modal {
+                 *stored_text = text;
+             }
+        } else {
+            state.edit_modal = None;
+        }
+    }
+
+    // Render JSON Modal
     if let Some((idx, json)) = &state.json_modal {
         let mut open = true;
         egui::Window::new(format!("Row {} JSON", idx))
@@ -474,6 +538,7 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
             .collapsible(false)
             .resizable(true)
             .show(ctx, |ui| {
+                ui.style_mut().text_styles = style.text_styles.clone();
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.add(egui::TextEdit::multiline(&mut json.as_str()).code_editor());
                 });
