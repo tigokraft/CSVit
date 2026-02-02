@@ -35,6 +35,8 @@ pub struct EditorState {
     graph_x_col: usize,
     graph_y_col: usize,
     graph_data: Vec<[f64; 2]>,
+    // In-memory grid for new/edited files
+    grid: Option<crate::backend::grid::EditableGrid>,
 }
 
 pub enum AppState {
@@ -78,6 +80,7 @@ impl GuiApp {
                 graph_x_col: 0,
                 graph_y_col: 1,
                 graph_data: Vec::new(),
+                grid: None,
             })
         } else {
             AppState::Welcome
@@ -116,6 +119,7 @@ impl GuiApp {
                     graph_x_col: 0,
                     graph_y_col: 1,
                     graph_data: Vec::new(),
+                    grid: None,
                 });
             }
             Err(e) => {
@@ -288,6 +292,7 @@ impl eframe::App for GuiApp {
                             let cols = self.new_csv_columns;
                             let rows = self.new_csv_rows;
                             let default_widths: Vec<f32> = (0..cols).map(|_| 100.0).collect();
+                            let grid = crate::backend::grid::EditableGrid::new(cols, rows);
                             self.state = AppState::Editor(EditorState {
                                 loader: Arc::new(CsvLoader::empty(cols, rows)),
                                 reader: PagedReader::empty(),
@@ -305,6 +310,7 @@ impl eframe::App for GuiApp {
                                 graph_x_col: 0,
                                 graph_y_col: 1.min(cols.saturating_sub(1)),
                                 graph_data: Vec::new(),
+                                grid: Some(grid),
                             });
                             self.show_new_csv_dialog = false;
                         }
@@ -456,23 +462,97 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
         ui.add_space(4.0);
     });
 
+    // Edit toolbar (only shown when grid mode is active)
+    if state.grid.is_some() {
+        egui::TopBottomPanel::top("edit_toolbar").show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Edit:");
+                if ui.button("➕ Row").clicked() {
+                    if let Some(ref mut grid) = state.grid {
+                        let after = state.selected_cell.map(|(r, _)| r);
+                        grid.add_row(after);
+                    }
+                }
+                if ui.button("➖ Row").clicked() {
+                    if let Some(ref mut grid) = state.grid {
+                        if let Some((r, _)) = state.selected_cell {
+                            grid.delete_row(r);
+                            state.selected_cell = None;
+                        }
+                    }
+                }
+                ui.separator();
+                if ui.button("➕ Col").clicked() {
+                    if let Some(ref mut grid) = state.grid {
+                        let after = state.selected_cell.map(|(_, c)| c);
+                        grid.add_column(after);
+                        state.num_columns = grid.num_cols();
+                        state.column_widths.push(100.0);
+                    }
+                }
+                if ui.button("➖ Col").clicked() {
+                    if let Some(ref mut grid) = state.grid {
+                        if let Some((_, c)) = state.selected_cell {
+                            grid.delete_column(c);
+                            state.num_columns = grid.num_cols();
+                            if !state.column_widths.is_empty() {
+                                state.column_widths.pop();
+                            }
+                            state.selected_cell = None;
+                        }
+                    }
+                }
+                ui.separator();
+                if ui.button("💾 Save As").clicked() {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("CSV", &["csv"])
+                        .add_filter("CSVit", &["csvi"])
+                        .save_file()
+                    {
+                        if let Some(ref grid) = state.grid {
+                            let csv_text = grid.to_csv();
+                            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("csv");
+                            if ext == "csvi" {
+                                let metadata = crate::backend::csvi::CsviMetadata::new();
+                                let _ = crate::backend::csvi::save_csvi(&path, &csv_text, &metadata);
+                            } else {
+                                let _ = std::fs::write(&path, csv_text);
+                            }
+                            state.filename = path.to_string_lossy().to_string();
+                        }
+                    }
+                }
+            });
+        });
+    }
+
     egui::CentralPanel::default().show(ctx, |ui| {
          ui.style_mut().text_styles = style.text_styles.clone(); // Apply font
-         let total_rows = state.loader.total_records();
+         
+         // Use grid if available, otherwise use loader
+         let total_rows = if let Some(ref grid) = state.grid {
+             grid.num_rows()
+         } else {
+             state.loader.total_records()
+         };
          let num_cols = state.num_columns;
          let mut scroll_target = None;
          
-         // Helper to load content
+         // Helper to load content - uses grid if available
          let load_content = |state: &mut EditorState, r: usize, c: usize| -> String {
-              let line_content = match state.reader.get_rows(r, 1) {
-                    Ok(v) => v.get(0).cloned().unwrap_or_default(),
-                    Err(_) => String::new(),
-              };
-              let fields = CsvParser::parse_line(&line_content).unwrap_or_default();
-              if let Some(edit) = state.editor.get_edit(r, c) {
-                  edit.clone()
+              if let Some(ref grid) = state.grid {
+                  grid.get_cell(r, c).cloned().unwrap_or_default()
               } else {
-                  fields.get(c).cloned().unwrap_or_default()
+                  let line_content = match state.reader.get_rows(r, 1) {
+                        Ok(v) => v.get(0).cloned().unwrap_or_default(),
+                        Err(_) => String::new(),
+                  };
+                  let fields = CsvParser::parse_line(&line_content).unwrap_or_default();
+                  if let Some(edit) = state.editor.get_edit(r, c) {
+                      edit.clone()
+                  } else {
+                      fields.get(c).cloned().unwrap_or_default()
+                  }
               }
          };
 
@@ -540,12 +620,21 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                         .body(|body| {
                             body.rows(row_height, total_rows, |mut row| {
                                 let row_index = row.index();
-                                let line_content = match state.reader.get_rows(row_index, 1) {
-                                    Ok(v) => v.get(0).cloned().unwrap_or_default(),
-                                    Err(_) => String::new(),
+                                
+                                // Get fields from grid if available, otherwise from reader
+                                let fields: Vec<String> = if let Some(ref grid) = state.grid {
+                                    (0..state.num_columns)
+                                        .map(|c| grid.get_cell(row_index, c).cloned().unwrap_or_default())
+                                        .collect()
+                                } else {
+                                    let line_content = match state.reader.get_rows(row_index, 1) {
+                                        Ok(v) => v.get(0).cloned().unwrap_or_default(),
+                                        Err(_) => String::new(),
+                                    };
+                                    let mut fields = CsvParser::parse_line(&line_content).unwrap_or_default();
+                                    while fields.len() < state.num_columns { fields.push(String::new()); }
+                                    fields
                                 };
-                                let mut fields = CsvParser::parse_line(&line_content).unwrap_or_default();
-                                while fields.len() < state.num_columns { fields.push(String::new()); }
 
                                 row.col(|ui| { ui.label(egui::RichText::new(row_index.to_string()).color(egui::Color32::from_gray(100))); });
                                 for (col_index, field) in fields.iter().enumerate().take(state.num_columns) {
@@ -556,7 +645,12 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                                         if is_editing {
                                             let response = ui.text_edit_singleline(&mut state.input_buffer);
                                             if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                                state.editor.add_edit(row_index, col_index, state.input_buffer.clone());
+                                                // Save to grid if available, otherwise to editor
+                                                if let Some(ref mut grid) = state.grid {
+                                                    grid.set_cell(row_index, col_index, state.input_buffer.clone());
+                                                } else {
+                                                    state.editor.add_edit(row_index, col_index, state.input_buffer.clone());
+                                                }
                                                 state.editing_cell = None;
                                             } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                                 state.editing_cell = None;
