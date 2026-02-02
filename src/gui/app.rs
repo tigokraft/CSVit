@@ -35,6 +35,8 @@ pub enum AppState {
 
 pub struct GuiApp {
     state: AppState,
+    settings: Settings,
+    show_settings: bool,
 }
 
 impl GuiApp {
@@ -60,7 +62,11 @@ impl GuiApp {
         // TODO: Configure fonts/styles for Shadcn look
         // We'll do this in update or a separate setup function if needed.
         
-        Self { state }
+        Self { 
+            state,
+            settings: Settings { theme: Theme::System },
+            show_settings: false,
+        }
     }
 
     fn open_file_dialog(&mut self) {
