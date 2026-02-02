@@ -257,6 +257,7 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                 for (col_index, field) in fields.iter().enumerate().take(state.num_columns) {
                                     row.col(|ui| {
                                         let is_editing = state.editing_cell == Some((row_index, col_index));
+                                        let is_selected = state.selected_cell == Some((row_index, col_index));
                                         
                                         if is_editing {
                                             let response = ui.text_edit_singleline(&mut state.input_buffer);
@@ -282,6 +283,21 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                             }
 
                                             let response = ui.add(label);
+                                            
+                                            // Selection Highlight
+                                            if is_selected {
+                                                ui.painter().rect_stroke(
+                                                    response.rect,
+                                                    0.0,
+                                                    egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 255))
+                                                );
+                                                response.scroll_to_me(Some(egui::Align::Center));
+                                            }
+
+                                            if response.clicked() {
+                                                state.selected_cell = Some((row_index, col_index));
+                                            }
+
                                             if response.double_clicked() {
                                                 state.editing_cell = Some((row_index, col_index));
                                                 state.input_buffer = text.clone();
