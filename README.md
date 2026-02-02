@@ -12,6 +12,25 @@ A high-performance portable, modern CSVit built with Rust and egui. Designed to 
     - Export the entire file to JSON.
     - Right-click any row to view it as a JSON object.
 - **Word Wrap**: Toggle word wrapping for long cell content.
+- **Customization**: Dark/Light/System themes, adjustable font size and row height.
+- **Cross-Platform**: Runs natively on Windows, macOS, and Linux.
+
+## Platform Support
+
+CSVit is built with Rust and runs on all major operating systems.
+
+### Windows
+- Works out of the box.
+- Release builds hide the terminal window automatically.
+
+### macOS
+- Works out of the box.
+- Universal binary compilation is supported via standard Rust toolchains.
+
+### Linux
+- Requires standard GUI development libraries (GTK3 or generic X11/Wayland libs depending on backend).
+- On Ubuntu/Debian: `sudo apt install libgtk-3-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev`
+- On Fedora: `sudo dnf install gtk3-devel libxcb-devel libxkbcommon-devel openssl-devel`
 
 ## Prerequisites
 
