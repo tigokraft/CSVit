@@ -213,18 +213,25 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
     egui::CentralPanel::default().show(ctx, |ui| {
          let total_rows = state.loader.total_records();
          let num_cols = state.num_columns;
+         let mut scroll_target = None;
          
          // Keyboard Navigation
          if state.editing_cell.is_none() {
              if let Some((r, c)) = state.selected_cell {
                  if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                     state.selected_cell = Some((r.min(total_rows - 1) + 1, c));
+                     let next_row = (r.min(total_rows - 1) + 1).min(total_rows - 1);
+                     state.selected_cell = Some((next_row, c));
+                     scroll_target = Some(next_row);
                  } else if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                      state.selected_cell = Some((r.saturating_sub(1), c));
+                      let prev_row = r.saturating_sub(1);
+                      state.selected_cell = Some((prev_row, c));
+                      scroll_target = Some(prev_row);
                  } else if ui.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
                       state.selected_cell = Some((r, (c + 1).min(num_cols - 1)));
+                      scroll_target = Some(r);
                  } else if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
                       state.selected_cell = Some((r, c.saturating_sub(1)));
+                      scroll_target = Some(r);
                  } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                       state.editing_cell = Some((r, c));
                       // Load content into buffer
@@ -244,6 +251,7 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                  // Initial selection on arrow key
                   if ui.input(|i| i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft)) {
                       state.selected_cell = Some((0, 0));
+                      scroll_target = Some(0); // Set scroll_target
                   }
              }
          }
@@ -263,12 +271,18 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                 // Actually TableBuilder has `.scroll()`.
                 
                 egui::ScrollArea::horizontal().show(ui, |ui| {
-                    TableBuilder::new(ui)
+                    let mut builder = TableBuilder::new(ui)
                         .striped(true)
                         .resizable(true)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                         .column(Column::auto()) // Index
-                        .columns(Column::initial(120.0).resizable(true), state.num_columns) 
+                        .columns(Column::initial(120.0).resizable(true), state.num_columns);
+
+                    if let Some(target_row) = scroll_target {
+                        builder = builder.scroll_to_row(target_row, Some(egui::Align::Center));
+                    }
+                    
+                    builder
                         .header(30.0, |mut header| {
                             header.col(|ui| { ui.strong("Row"); });
                             for i in 0..state.num_columns {
@@ -324,7 +338,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                                     egui::Stroke::new(2.0, egui::Color32::from_rgb(100, 200, 255)),
                                                     egui::StrokeKind::Middle
                                                 );
-                                                response.scroll_to_me(Some(egui::Align::Center));
+                                                // Removed scroll_to_me to prevent glitching. 
+                                                // Scroll is handled by TableBuilder via scroll_target.
                                             }
 
                                             if response.clicked() {
