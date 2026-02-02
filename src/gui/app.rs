@@ -8,20 +8,7 @@ use crate::backend::parser::CsvParser;
 
 
 
-#[derive(PartialEq, Clone, Copy)]
-pub enum Theme {
-    System,
-    Dark,
-    Light,
-}
-
-#[derive(Clone)]
-pub struct Settings {
-    pub theme: Theme,
-    pub font_size: f32,
-    pub row_height: f32,
-    pub use_edit_modal: bool,
-}
+use crate::backend::settings::{Settings, Theme};
 
 #[derive(PartialEq)]
 pub enum ViewMode {
@@ -85,12 +72,9 @@ impl GuiApp {
         
         Self { 
             state,
-            settings: Settings { 
-                theme: Theme::System,
-                font_size: 14.0,
-                row_height: 24.0,
-                use_edit_modal: false,
-            },
+        Self { 
+            state,
+            settings: Settings::load(),
             show_settings: false,
         }
     }
@@ -129,6 +113,7 @@ impl GuiApp {
     }
 }
 
+impl eframe::App for GuiApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         apply_style(ctx, &self.settings); 
 
@@ -174,9 +159,21 @@ impl GuiApp {
                     ui.separator();
                     ui.label("Behavior");
                     ui.checkbox(&mut self.settings.use_edit_modal, "Use Popup for Editing");
+                    
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                         if ui.button("Save Settings").clicked() {
+                             self.settings.save();
+                         }
+                         if ui.button("Delete Config").clicked() {
+                             Settings::reset();
+                             self.settings = Settings::load(); // Reload defaults
+                         }
+                    });
                 });
              if !open {
                  self.show_settings = false;
+                 self.settings.save(); // Auto-save on close
              }
         }
 
