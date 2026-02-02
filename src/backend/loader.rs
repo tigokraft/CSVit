@@ -105,6 +105,26 @@ impl CsvLoader {
     pub fn total_records(&self) -> usize {
         self.total_records
     }
+
+    pub fn num_columns(&self) -> usize {
+        if let Some(line) = self.get_record_line(0) {
+            // Simple comma counting for now, respecting quotes would be better but this is a start.
+            // Actually, let's use the parser logic if we can, or just count.
+            // Since we don't have the parser here, let's do a quick scan.
+            let mut count = 1;
+            let mut in_quote = false;
+            for &b in line {
+                match b {
+                    b'"' => in_quote = !in_quote,
+                    b',' => if !in_quote { count += 1 },
+                    _ => {}
+                }
+            }
+            count
+        } else {
+            0
+        }
+    }
 }
 
 #[cfg(test)]
