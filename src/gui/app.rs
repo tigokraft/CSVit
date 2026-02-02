@@ -14,6 +14,7 @@ use crate::backend::settings::{Settings, Theme};
 pub enum ViewMode {
     Table,
     Text,
+    Graph,
 }
 
 pub struct EditorState {
@@ -30,6 +31,10 @@ pub struct EditorState {
     column_widths: Vec<f32>,
     selected_cell: Option<(usize, usize)>,
     edit_modal: Option<(usize, usize, String)>,
+    // Graph state
+    graph_x_col: usize,
+    graph_y_col: usize,
+    graph_data: Vec<[f64; 2]>,
 }
 
 pub enum AppState {
@@ -62,6 +67,9 @@ impl GuiApp {
                 column_widths: loader.estimate_column_widths(),
                 selected_cell: None,
                 edit_modal: None,
+                graph_x_col: 0,
+                graph_y_col: 1,
+                graph_data: Vec::new(),
             })
         } else {
             AppState::Welcome
@@ -103,6 +111,9 @@ impl GuiApp {
                         column_widths: arc_loader.estimate_column_widths(),
                         selected_cell: None,
                         edit_modal: None,
+                        graph_x_col: 0,
+                        graph_y_col: 1,
+                        graph_data: Vec::new(),
                     });
                 }
                 Err(e) => {
@@ -201,6 +212,9 @@ impl eframe::App for GuiApp {
                                 column_widths: arc_loader.estimate_column_widths(),
                                 selected_cell: None,
                                 edit_modal: None,
+                                graph_x_col: 0,
+                                graph_y_col: 1,
+                                graph_data: Vec::new(),
                             });
                         }
                         Err(e) => {
@@ -284,6 +298,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
             ui.label(egui::RichText::new(&state.filename).color(egui::Color32::from_gray(150)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                  ui.selectable_value(&mut state.view_mode, ViewMode::Table, "Table");
+                 ui.selectable_value(&mut state.view_mode, ViewMode::Text, "Text");
+                 ui.selectable_value(&mut state.view_mode, ViewMode::Graph, "Graph");
                  ui.separator();
                  ui.checkbox(&mut state.word_wrap, "Word Wrap");
                  ui.separator();
@@ -493,6 +509,57 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                         });
                     }
                 });
+            }
+            ViewMode::Graph => {
+                 egui::CentralPanel::default().show(ctx, |ui| {
+                     ui.horizontal(|ui| {
+                        ui.label("X Axis:");
+                        egui::ComboBox::from_id_salt("x_axis")
+                            .selected_text(format!("Col {}", state.graph_x_col))
+                            .show_ui(ui, |ui| {
+                                for i in 0..state.num_columns {
+                                    ui.selectable_value(&mut state.graph_x_col, i, format!("Col {}", i));
+                                }
+                            });
+                        
+                        ui.label("Y Axis:");
+                         egui::ComboBox::from_id_salt("y_axis")
+                            .selected_text(format!("Col {}", state.graph_y_col))
+                            .show_ui(ui, |ui| {
+                                for i in 0..state.num_columns {
+                                    ui.selectable_value(&mut state.graph_y_col, i, format!("Col {}", i));
+                                }
+                            });
+                        
+                        if ui.button("Regenerate Graph").clicked() {
+                            // Fetch data
+                            let records = std::cmp::min(state.loader.total_records(), 5000); // Limit to 5000 for perfo
+                            let mut data = Vec::with_capacity(records);
+                            for i in 0..records {
+                                if let Some(line) = state.loader.get_record_line(i) {
+                                     // Need to parse quickly without `csv` reader if possible or use helper
+                                     // Using CsvParser would be safer
+                                    let line_str = String::from_utf8_lossy(line);
+                                    let fields = CsvParser::parse_line(&line_str).unwrap_or_default();
+                                    
+                                    let x_str = fields.get(state.graph_x_col).cloned().unwrap_or_default();
+                                    let y_str = fields.get(state.graph_y_col).cloned().unwrap_or_default();
+                                    
+                                    if let (Ok(x), Ok(y)) = (x_str.parse::<f64>(), y_str.parse::<f64>()) {
+                                        data.push([x, y]);
+                                    }
+                                }
+                            }
+                            state.graph_data = data;
+                        }
+                     });
+                     
+                     egui_plot::Plot::new("csv_plot")
+                        .show(ui, |plot_ui| {
+                            plot_ui.line(egui_plot::Line::new(egui_plot::PlotPoints::new(state.graph_data.clone())));
+                            plot_ui.points(egui_plot::Points::new(egui_plot::PlotPoints::new(state.graph_data.clone())).radius(3.0));
+                        });
+                 });
             }
          }
     });
