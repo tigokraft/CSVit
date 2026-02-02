@@ -138,7 +138,7 @@ impl eframe::App for GuiApp {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(100.0);
-                        ui.heading(egui::RichText::new("CSV Editor").size(40.0).strong());
+                        ui.heading(egui::RichText::new("CSVit").size(40.0).strong());
                         ui.label(egui::RichText::new("High performance editor for large files").size(16.0).color(egui::Color32::from_gray(150)));
                         ui.add_space(40.0);
                         
@@ -189,7 +189,7 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
     egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("CSV Editor").strong());
+            ui.label(egui::RichText::new("CSVit").strong());
             ui.label(egui::RichText::new(&state.filename).color(egui::Color32::from_gray(150)));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                  ui.selectable_value(&mut state.view_mode, ViewMode::Table, "Table");

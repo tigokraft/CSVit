@@ -37,7 +37,7 @@ fn main() -> Result<()> {
     };
     
     eframe::run_native(
-        "CSV Editor",
+        "CSVit",
         native_options,
         Box::new(move |cc| Ok(Box::new(crate::gui::app::GuiApp::new(cc, loader.clone(), filename.clone())))),
     ).map_err(|e| anyhow::anyhow!("Eframe error: {}", e))?;

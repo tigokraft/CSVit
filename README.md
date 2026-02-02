@@ -1,6 +1,6 @@
 # CSVit
 
-A high-performance portable, modern CSV editor built with Rust and egui. Designed to handle large files efficiently using memory mapping.
+A high-performance portable, modern CSVit built with Rust and egui. Designed to handle large files efficiently using memory mapping.
 
 ## Features
 
