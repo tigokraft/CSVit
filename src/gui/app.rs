@@ -18,6 +18,9 @@ pub enum Theme {
 #[derive(Clone)]
 pub struct Settings {
     pub theme: Theme,
+    pub font_size: f32,
+    pub row_height: f32,
+    pub use_edit_modal: bool,
 }
 
 #[derive(PartialEq)]
@@ -39,6 +42,7 @@ pub struct EditorState {
     num_columns: usize,
     column_widths: Vec<f32>,
     selected_cell: Option<(usize, usize)>,
+    edit_modal: Option<(usize, usize, String)>,
 }
 
 pub enum AppState {
@@ -70,6 +74,7 @@ impl GuiApp {
                 num_columns: loader.num_columns(),
                 column_widths: loader.estimate_column_widths(),
                 selected_cell: None,
+                edit_modal: None,
             })
         } else {
             AppState::Welcome
@@ -80,7 +85,12 @@ impl GuiApp {
         
         Self { 
             state,
-            settings: Settings { theme: Theme::System },
+            settings: Settings { 
+                theme: Theme::System,
+                font_size: 14.0,
+                row_height: 24.0,
+                use_edit_modal: false,
+            },
             show_settings: false,
         }
     }
@@ -108,6 +118,7 @@ impl GuiApp {
                         num_columns: arc_loader.num_columns(),
                         column_widths: arc_loader.estimate_column_widths(),
                         selected_cell: None,
+                        edit_modal: None,
                     });
                 }
                 Err(e) => {
@@ -184,6 +195,7 @@ impl eframe::App for GuiApp {
                                 num_columns: arc_loader.num_columns(),
                                 column_widths: arc_loader.estimate_column_widths(),
                                 selected_cell: None,
+                                edit_modal: None,
                             });
                         }
                         Err(e) => {
