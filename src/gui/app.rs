@@ -21,7 +21,9 @@ pub struct EditorState {
     editing_cell: Option<(usize, usize)>,
     filename: String,
     word_wrap: bool,
+    word_wrap: bool,
     json_modal: Option<(usize, String)>,
+    num_columns: usize,
 }
 
 pub enum AppState {
@@ -78,7 +80,9 @@ impl GuiApp {
                         editing_cell: None,
                         filename: path_str,
                         word_wrap: false,
+                        word_wrap: false,
                         json_modal: None,
+                        num_columns: arc_loader.num_columns(),
                     });
                 }
                 Err(e) => {
@@ -194,10 +198,10 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                         .resizable(true)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
                         .column(Column::auto()) // Index
-                        .columns(Column::initial(120.0).resizable(true), 10) 
+                        .columns(Column::initial(120.0).resizable(true), state.num_columns) 
                         .header(30.0, |mut header| {
                             header.col(|ui| { ui.strong("Row"); });
-                            for i in 0..10 {
+                            for i in 0..state.num_columns {
                                 header.col(|ui| { ui.strong(format!("Col {}", i)); });
                             }
                         })
@@ -209,10 +213,10 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                                     Err(_) => String::new(),
                                 };
                                 let mut fields = CsvParser::parse_line(&line_content).unwrap_or_default();
-                                while fields.len() < 10 { fields.push(String::new()); }
+                                while fields.len() < state.num_columns { fields.push(String::new()); }
 
                                 row.col(|ui| { ui.label(egui::RichText::new(row_index.to_string()).color(egui::Color32::from_gray(100))); });
-                                for (col_index, field) in fields.iter().enumerate().take(10) {
+                                for (col_index, field) in fields.iter().enumerate().take(state.num_columns) {
                                     row.col(|ui| {
                                         let is_editing = state.editing_cell == Some((row_index, col_index));
                                         
