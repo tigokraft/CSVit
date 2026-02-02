@@ -666,12 +666,13 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                                             // Use placeholder for empty cells to make them clickable
                                             let display_text = if text.is_empty() { " " } else { text };
                                             
-                                            // Allocate minimum clickable area
-                                            let min_size = egui::vec2(40.0, row_height - 4.0);
-                                            let (rect, base_response) = ui.allocate_at_least(min_size, egui::Sense::click());
+                                            // Fill entire available cell space for easy clicking
+                                            let available = ui.available_size();
+                                            let cell_size = egui::vec2(available.x.max(80.0), row_height - 2.0);
+                                            let (rect, response) = ui.allocate_exact_size(cell_size, egui::Sense::click());
                                             
                                             // Draw text within the allocated area
-                                            let text_pos = rect.min + egui::vec2(2.0, 2.0);
+                                            let text_pos = rect.min + egui::vec2(4.0, (rect.height() - settings.font_size) / 2.0);
                                             ui.painter().text(
                                                 text_pos,
                                                 egui::Align2::LEFT_TOP,
@@ -679,8 +680,6 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                                                 egui::FontId::proportional(settings.font_size),
                                                 ui.visuals().text_color(),
                                             );
-                                            
-                                            let response = base_response;
                                             
                                             // Selection Highlight
                                             if is_selected {
