@@ -48,11 +48,19 @@ pub struct GuiApp {
     state: AppState,
     settings: Settings,
     show_settings: bool,
+    show_new_csv_dialog: bool,
+    new_csv_columns: usize,
+    new_csv_rows: usize,
 }
 
 impl GuiApp {
     pub fn new(_cc: &eframe::CreationContext<'_>, loader: Option<Arc<CsvLoader>>, filename: Option<String>) -> Self {
-        let state = if let (Some(loader), Some(name)) = (loader, filename) {
+        let mut settings = Settings::load();
+        
+        let state = if let (Some(loader), Some(name)) = (loader, filename.clone()) {
+            if let Some(ref path) = filename {
+                settings.add_recent_file(path);
+            }
              AppState::Editor(EditorState {
                 loader: loader.clone(),
                 reader: PagedReader::new(loader.clone()),
@@ -74,52 +82,52 @@ impl GuiApp {
         } else {
             AppState::Welcome
         };
-
-        // TODO: Configure fonts/styles for Shadcn look
-        // We'll do this in update or a separate setup function if needed.
         
         Self { 
             state,
-        Self { 
-            state,
-            settings: Settings::load(),
+            settings,
             show_settings: false,
+            show_new_csv_dialog: false,
+            new_csv_columns: 3,
+            new_csv_rows: 10,
+        }
+    }
+
+    fn load_file(&mut self, path: &str) {
+        self.state = AppState::Loading(path.to_string());
+        match CsvLoader::new(std::path::Path::new(path)) {
+            Ok(loader) => {
+                let arc_loader = Arc::new(loader);
+                self.settings.add_recent_file(path);
+                self.state = AppState::Editor(EditorState {
+                    loader: arc_loader.clone(),
+                    reader: PagedReader::new(arc_loader.clone()),
+                    editor: EditBuffer::new(),
+                    view_mode: ViewMode::Table,
+                    input_buffer: String::new(),
+                    editing_cell: None,
+                    filename: path.to_string(),
+                    word_wrap: false,
+                    json_modal: None,
+                    num_columns: arc_loader.num_columns(),
+                    column_widths: arc_loader.estimate_column_widths(),
+                    selected_cell: None,
+                    edit_modal: None,
+                    graph_x_col: 0,
+                    graph_y_col: 1,
+                    graph_data: Vec::new(),
+                });
+            }
+            Err(e) => {
+                self.state = AppState::Error(format!("Failed to load file: {}", e));
+            }
         }
     }
 
     fn open_file_dialog(&mut self) {
         if let Some(path) = rfd::FileDialog::new().add_filter("CSV", &["csv"]).pick_file() {
             let path_str = path.to_string_lossy().to_string();
-            self.state = AppState::Loading(path_str.clone());
-            
-            // In a real app we'd spawn a thread. For now, block to load (it's fast due to mmap).
-            // Actually, let's just load it here.
-            match CsvLoader::new(&path) {
-                Ok(loader) => {
-                    let arc_loader = Arc::new(loader);
-                    self.state = AppState::Editor(EditorState {
-                        loader: arc_loader.clone(),
-                        reader: PagedReader::new(arc_loader.clone()),
-                        editor: EditBuffer::new(),
-                        view_mode: ViewMode::Table,
-                        input_buffer: String::new(),
-                        editing_cell: None,
-                        filename: path_str,
-                        word_wrap: false,
-                        json_modal: None,
-                        num_columns: arc_loader.num_columns(),
-                        column_widths: arc_loader.estimate_column_widths(),
-                        selected_cell: None,
-                        edit_modal: None,
-                        graph_x_col: 0,
-                        graph_y_col: 1,
-                        graph_data: Vec::new(),
-                    });
-                }
-                Err(e) => {
-                    self.state = AppState::Error(format!("Failed to load file: {}", e));
-                }
-            }
+            self.load_file(&path_str);
         }
     }
 }
@@ -131,12 +139,33 @@ impl eframe::App for GuiApp {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
              ui.horizontal(|ui| {
                  ui.menu_button("File", |ui| {
-                     if ui.button("Open").clicked() {
-                         self.open_file_dialog();
-                         ui.close_menu();
+                     if ui.button("📄 New CSV").clicked() {
+                         self.show_new_csv_dialog = true;
+                         ui.close();
                      }
+                     if ui.button("📂 Open").clicked() {
+                         self.open_file_dialog();
+                         ui.close();
+                     }
+                     ui.separator();
+                     ui.menu_button("Recent Files", |ui| {
+                         if self.settings.recent_files.is_empty() {
+                             ui.label("No recent files");
+                         } else {
+                             for path in self.settings.recent_files.clone() {
+                                 let display_name = std::path::Path::new(&path)
+                                     .file_name()
+                                     .map(|n| n.to_string_lossy().to_string())
+                                     .unwrap_or_else(|| path.clone());
+                                 if ui.button(&display_name).on_hover_text(&path).clicked() {
+                                     self.load_file(&path);
+                                     ui.close();
+                                 }
+                             }
+                         }
+                     });
                  });
-                 if ui.button("Settings").clicked() {
+                 if ui.button("⚙ Settings").clicked() {
                      self.show_settings = true;
                  }
              });
@@ -147,45 +176,103 @@ impl eframe::App for GuiApp {
              let mut open = true;
              egui::Window::new("Settings")
                 .open(&mut open)
-                .resizable(false)
+                .resizable(true)
+                .min_width(350.0)
                 .show(ctx, |ui| {
-                    ui.label("Theme");
-                    egui::ComboBox::from_id_salt("theme_selector")
-                        .selected_text(match self.settings.theme {
-                            Theme::System => "System",
-                            Theme::Dark => "Dark",
-                            Theme::Light => "Light",
-                        })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.settings.theme, Theme::System, "System");
-                            ui.selectable_value(&mut self.settings.theme, Theme::Dark, "Dark");
-                            ui.selectable_value(&mut self.settings.theme, Theme::Light, "Light");
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.heading("Theme");
+                        egui::ComboBox::from_id_salt("theme_selector")
+                            .selected_text(self.settings.theme.name())
+                            .show_ui(ui, |ui| {
+                                for theme in Theme::all() {
+                                    ui.selectable_value(&mut self.settings.theme, *theme, theme.name());
+                                }
+                            });
+                        
+                        ui.separator();
+                        ui.heading("Appearance");
+                        ui.add(egui::Slider::new(&mut self.settings.font_size, 10.0..=24.0).text("Font Size"));
+                        ui.add(egui::Slider::new(&mut self.settings.row_height, 20.0..=60.0).text("Row Height"));
+                        
+                        ui.separator();
+                        ui.heading("Behavior");
+                        ui.checkbox(&mut self.settings.use_edit_modal, "Use Popup for Editing");
+                        ui.checkbox(&mut self.settings.auto_beautify_json, "Auto-beautify JSON in Popup");
+                        
+                        ui.separator();
+                        ui.heading("Recent Files");
+                        ui.add(egui::Slider::new(&mut self.settings.max_recent_files, 1..=20).text("Max Recent Files"));
+                        if ui.button("Clear Recent Files").clicked() {
+                            self.settings.recent_files.clear();
+                        }
+                        
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                             if ui.button("Save Settings").clicked() {
+                                 self.settings.save();
+                             }
+                             if ui.button("Reset to Defaults").clicked() {
+                                 Settings::reset();
+                                 self.settings = Settings::load();
+                             }
                         });
-                    
-                    ui.separator();
-                    ui.label("Appearance");
-                    ui.add(egui::Slider::new(&mut self.settings.font_size, 10.0..=24.0).text("Font Size"));
-                    ui.add(egui::Slider::new(&mut self.settings.row_height, 20.0..=60.0).text("Row Height"));
-                    
-                    ui.separator();
-                    ui.label("Behavior");
-                    ui.checkbox(&mut self.settings.use_edit_modal, "Use Popup for Editing");
-                    
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                         if ui.button("Save Settings").clicked() {
-                             self.settings.save();
-                         }
-                         if ui.button("Delete Config").clicked() {
-                             Settings::reset();
-                             self.settings = Settings::load(); // Reload defaults
-                         }
                     });
                 });
              if !open {
                  self.show_settings = false;
-                 self.settings.save(); // Auto-save on close
+                 self.settings.save();
              }
+        }
+        // New CSV Dialog
+        if self.show_new_csv_dialog {
+            let mut open = true;
+            egui::Window::new("Create New CSV")
+                .open(&mut open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Columns:");
+                        ui.add(egui::DragValue::new(&mut self.new_csv_columns).range(1..=100));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Rows:");
+                        ui.add(egui::DragValue::new(&mut self.new_csv_rows).range(1..=1000));
+                    });
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Create").clicked() {
+                            // Create an in-memory CSV structure
+                            let cols = self.new_csv_columns;
+                            let rows = self.new_csv_rows;
+                            let default_widths: Vec<f32> = (0..cols).map(|_| 100.0).collect();
+                            self.state = AppState::Editor(EditorState {
+                                loader: Arc::new(CsvLoader::empty(cols, rows)),
+                                reader: PagedReader::empty(),
+                                editor: EditBuffer::new(),
+                                view_mode: ViewMode::Table,
+                                input_buffer: String::new(),
+                                editing_cell: None,
+                                filename: "Untitled.csv".to_string(),
+                                word_wrap: false,
+                                json_modal: None,
+                                num_columns: cols,
+                                column_widths: default_widths,
+                                selected_cell: None,
+                                edit_modal: None,
+                                graph_x_col: 0,
+                                graph_y_col: 1.min(cols.saturating_sub(1)),
+                                graph_data: Vec::new(),
+                            });
+                            self.show_new_csv_dialog = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_new_csv_dialog = false;
+                        }
+                    });
+                });
+            if !open {
+                self.show_new_csv_dialog = false;
+            }
         }
 
         // Handle Drag & Drop
@@ -193,34 +280,8 @@ impl eframe::App for GuiApp {
             let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
             if let Some(file) = dropped_files.first() {
                 if let Some(path) = &file.path {
-                     let path_str = path.to_string_lossy().to_string();
-                     self.state = AppState::Loading(path_str.clone());
-                     match CsvLoader::new(path) {
-                        Ok(loader) => {
-                            let arc_loader = Arc::new(loader);
-                            self.state = AppState::Editor(EditorState {
-                                loader: arc_loader.clone(),
-                                reader: PagedReader::new(arc_loader.clone()),
-                                editor: EditBuffer::new(),
-                                view_mode: ViewMode::Table,
-                                input_buffer: String::new(),
-                                editing_cell: None,
-                                filename: path_str,
-                                word_wrap: false,
-                                json_modal: None,
-                                num_columns: arc_loader.num_columns(),
-                                column_widths: arc_loader.estimate_column_widths(),
-                                selected_cell: None,
-                                edit_modal: None,
-                                graph_x_col: 0,
-                                graph_y_col: 1,
-                                graph_data: Vec::new(),
-                            });
-                        }
-                        Err(e) => {
-                            self.state = AppState::Error(format!("Failed to load file: {}", e));
-                        }
-                    }
+                    let path_str = path.to_string_lossy().to_string();
+                    self.load_file(&path_str);
                 }
             }
         }
@@ -231,16 +292,51 @@ impl eframe::App for GuiApp {
             AppState::Welcome => {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(100.0);
-                        ui.heading(egui::RichText::new("CSVit").size(40.0).strong());
-                        ui.label(egui::RichText::new("High performance editor for large files").size(16.0).color(egui::Color32::from_gray(150)));
-                        ui.add_space(40.0);
+                        ui.add_space(60.0);
+                        ui.heading(egui::RichText::new("CSVit").size(48.0).strong());
+                        ui.label(egui::RichText::new("High performance editor for large CSV files").size(16.0).color(egui::Color32::from_gray(150)));
+                        ui.add_space(30.0);
                         
-                        if ui.add(egui::Button::new(egui::RichText::new("Open File").size(18.0))
-                            .min_size(egui::vec2(200.0, 50.0))
-                            .corner_radius(4.0)
-                        ).clicked() {
-                            self.open_file_dialog();
+                        ui.horizontal(|ui| {
+                            ui.add_space(ui.available_width() / 2.0 - 220.0);
+                            if ui.add(egui::Button::new(egui::RichText::new("📄 New CSV").size(16.0))
+                                .min_size(egui::vec2(140.0, 45.0))
+                                .corner_radius(6.0)
+                            ).clicked() {
+                                self.show_new_csv_dialog = true;
+                            }
+                            ui.add_space(20.0);
+                            if ui.add(egui::Button::new(egui::RichText::new("📂 Open File").size(16.0))
+                                .min_size(egui::vec2(140.0, 45.0))
+                                .corner_radius(6.0)
+                            ).clicked() {
+                                self.open_file_dialog();
+                            }
+                        });
+                        
+                        // Recent Files Section
+                        if !self.settings.recent_files.is_empty() {
+                            ui.add_space(40.0);
+                            ui.heading(egui::RichText::new("Recent Files").size(18.0));
+                            ui.add_space(10.0);
+                            
+                            egui::Frame::default()
+                                .inner_margin(12.0)
+                                .corner_radius(8.0)
+                                .fill(ui.visuals().extreme_bg_color)
+                                .show(ui, |ui| {
+                                    for path in self.settings.recent_files.clone().iter().take(5) {
+                                        let display_name = std::path::Path::new(path)
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_else(|| path.clone());
+                                        if ui.add(egui::Button::new(&display_name)
+                                            .min_size(egui::vec2(300.0, 30.0))
+                                        ).on_hover_text(path).clicked() {
+                                            self.load_file(path);
+                                        }
+                                    }
+                                });
                         }
                     });
                 });
@@ -556,8 +652,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                      
                      egui_plot::Plot::new("csv_plot")
                         .show(ui, |plot_ui| {
-                            plot_ui.line(egui_plot::Line::new(egui_plot::PlotPoints::new(state.graph_data.clone())));
-                            plot_ui.points(egui_plot::Points::new(egui_plot::PlotPoints::new(state.graph_data.clone())).radius(3.0));
+                            plot_ui.line(egui_plot::Line::new("Data", egui_plot::PlotPoints::new(state.graph_data.clone())));
+                            plot_ui.points(egui_plot::Points::new("Data Points", egui_plot::PlotPoints::new(state.graph_data.clone())).radius(3.0));
                         });
                  });
             }
@@ -623,9 +719,7 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
 fn apply_style(ctx: &egui::Context, settings: &Settings) {
     match settings.theme {
         Theme::System => {
-            // Respect system, so don't force visuals unless you want to override some specifics
-            // Reset to default then we can tweak
-             ctx.set_visuals(egui::Visuals::default()); 
+            ctx.set_visuals(egui::Visuals::default()); 
         }
         Theme::Dark => {
             let mut visuals = egui::Visuals::dark();
@@ -634,7 +728,52 @@ fn apply_style(ctx: &egui::Context, settings: &Settings) {
             ctx.set_visuals(visuals);
         }
         Theme::Light => {
-             ctx.set_visuals(egui::Visuals::light());
+            ctx.set_visuals(egui::Visuals::light());
+        }
+        Theme::Monokai => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(39, 40, 34);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(49, 50, 44);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(73, 72, 62);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(30, 31, 28);
+            ctx.set_visuals(visuals);
+        }
+        Theme::Solarized => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(0, 43, 54);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(7, 54, 66);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(38, 139, 210);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(0, 36, 46);
+            ctx.set_visuals(visuals);
+        }
+        Theme::Nord => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(46, 52, 64);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(59, 66, 82);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(136, 192, 208);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(36, 42, 54);
+            ctx.set_visuals(visuals);
+        }
+        Theme::Dracula => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(40, 42, 54);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(68, 71, 90);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(189, 147, 249);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(33, 34, 44);
+            ctx.set_visuals(visuals);
+        }
+        Theme::Catppuccin => {
+            let mut visuals = egui::Visuals::dark();
+            visuals.window_corner_radius = 8.0.into();
+            visuals.widgets.noninteractive.bg_fill = egui::Color32::from_rgb(30, 30, 46);
+            visuals.widgets.inactive.bg_fill = egui::Color32::from_rgb(49, 50, 68);
+            visuals.selection.bg_fill = egui::Color32::from_rgb(203, 166, 247);
+            visuals.extreme_bg_color = egui::Color32::from_rgb(24, 24, 37);
+            ctx.set_visuals(visuals);
         }
     }
 }
