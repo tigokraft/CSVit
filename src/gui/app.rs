@@ -37,6 +37,7 @@ pub struct EditorState {
     word_wrap: bool,
     json_modal: Option<(usize, String)>,
     num_columns: usize,
+    column_widths: Vec<f32>,
     selected_cell: Option<(usize, usize)>,
 }
 
@@ -67,6 +68,7 @@ impl GuiApp {
                 word_wrap: false,
                 json_modal: None,
                 num_columns: loader.num_columns(),
+                column_widths: loader.estimate_column_widths(),
                 selected_cell: None,
             })
         } else {
@@ -104,6 +106,7 @@ impl GuiApp {
                         word_wrap: false,
                         json_modal: None,
                         num_columns: arc_loader.num_columns(),
+                        column_widths: arc_loader.estimate_column_widths(),
                         selected_cell: None,
                     });
                 }
@@ -179,6 +182,7 @@ impl eframe::App for GuiApp {
                                 word_wrap: false,
                                 json_modal: None,
                                 num_columns: arc_loader.num_columns(),
+                                column_widths: arc_loader.estimate_column_widths(),
                                 selected_cell: None,
                             });
                         }
@@ -334,8 +338,11 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context) {
                         .striped(true)
                         .resizable(true)
                         .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                        .column(Column::auto()) // Index
-                        .columns(Column::initial(120.0).resizable(true), state.num_columns);
+                        .column(Column::auto()); // Index
+                    
+                    for width in &state.column_widths {
+                        builder = builder.column(Column::initial(*width).resizable(true));
+                    }
 
                     if let Some(target_row) = scroll_target {
                         builder = builder.scroll_to_row(target_row, Some(egui::Align::Center));
