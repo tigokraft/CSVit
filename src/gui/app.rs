@@ -663,14 +663,24 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                                                 field
                                             };
                                             
-                                            let mut label = egui::Label::new(text).sense(egui::Sense::click());
-                                            if state.word_wrap {
-                                                label = label.wrap();
-                                            } else {
-                                                label = label.truncate();
-                                            }
-
-                                            let response = ui.add(label);
+                                            // Use placeholder for empty cells to make them clickable
+                                            let display_text = if text.is_empty() { " " } else { text };
+                                            
+                                            // Allocate minimum clickable area
+                                            let min_size = egui::vec2(40.0, row_height - 4.0);
+                                            let (rect, base_response) = ui.allocate_at_least(min_size, egui::Sense::click());
+                                            
+                                            // Draw text within the allocated area
+                                            let text_pos = rect.min + egui::vec2(2.0, 2.0);
+                                            ui.painter().text(
+                                                text_pos,
+                                                egui::Align2::LEFT_TOP,
+                                                display_text,
+                                                egui::FontId::proportional(settings.font_size),
+                                                ui.visuals().text_color(),
+                                            );
+                                            
+                                            let response = base_response;
                                             
                                             // Selection Highlight
                                             if is_selected {
