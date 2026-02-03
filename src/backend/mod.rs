@@ -7,3 +7,4 @@ pub mod settings;
 pub mod formatting;
 pub mod csvi;
 pub mod grid;
+pub mod analysis;

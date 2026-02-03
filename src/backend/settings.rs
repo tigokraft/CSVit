@@ -75,6 +75,23 @@ impl Default for CustomTheme {
     }
 }
 
+/// Keybinding mode - Standard (GUI) or Vim (modal)
+#[derive(PartialEq, Clone, Copy, Serialize, Deserialize, Debug, Default)]
+pub enum KeybindingMode {
+    #[default]
+    Standard,  // Traditional GUI with Ctrl+S, Ctrl+Z, mouse-first
+    Vim,       // Modal editing with hjkl, :commands, keyboard-first
+}
+
+impl KeybindingMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            KeybindingMode::Standard => "Standard",
+            KeybindingMode::Vim => "Vim",
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub theme: Theme,
@@ -93,6 +110,10 @@ pub struct Settings {
     pub custom_themes: Vec<CustomTheme>,
     #[serde(default = "default_font")]
     pub font_family: String,
+    #[serde(default)]
+    pub keybinding_mode: KeybindingMode,
+    #[serde(default)]
+    pub show_profile_hud: bool,
 }
 
 fn default_max_recent() -> usize {
@@ -116,6 +137,8 @@ impl Default for Settings {
             stripe_color: None,
             custom_themes: Vec::new(),
             font_family: default_font(),
+            keybinding_mode: KeybindingMode::Standard,
+            show_profile_hud: false,
         }
     }
 }

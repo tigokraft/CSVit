@@ -5,16 +5,24 @@ use crate::backend::loader::CsvLoader;
 use crate::backend::paged_reader::PagedReader;
 use crate::backend::editor::EditBuffer;
 use crate::backend::parser::CsvParser;
-
-
-
-use crate::backend::settings::{Settings, Theme};
+use crate::backend::analysis::{ColumnAnalyzer, ColumnProfile};
+use crate::backend::settings::{Settings, Theme, KeybindingMode};
 
 #[derive(PartialEq)]
 pub enum ViewMode {
     Table,
     Text,
     Graph,
+}
+
+/// Vim-like editor modes (only active when keybinding_mode is Vim)
+#[derive(PartialEq, Clone, Copy, Default)]
+pub enum VimMode {
+    #[default]
+    Normal,
+    Insert,
+    Visual,
+    Command,
 }
 
 pub struct EditorState {
@@ -37,6 +45,11 @@ pub struct EditorState {
     graph_data: Vec<[f64; 2]>,
     // In-memory grid for new/edited files
     grid: Option<crate::backend::grid::EditableGrid>,
+    // Column profile for HUD
+    column_profile: Option<ColumnProfile>,
+    // Vim mode state
+    vim_mode: VimMode,
+    command_buffer: String,
 }
 
 pub enum AppState {
@@ -81,6 +94,9 @@ impl GuiApp {
                 graph_y_col: 1,
                 graph_data: Vec::new(),
                 grid: None,
+                column_profile: None,
+                vim_mode: VimMode::Normal,
+                command_buffer: String::new(),
             })
         } else {
             AppState::Welcome
@@ -120,6 +136,9 @@ impl GuiApp {
                     graph_y_col: 1,
                     graph_data: Vec::new(),
                     grid: None,
+                    column_profile: None,
+                    vim_mode: VimMode::Normal,
+                    command_buffer: String::new(),
                 });
             }
             Err(e) => {
@@ -247,6 +266,26 @@ impl eframe::App for GuiApp {
                         ui.checkbox(&mut self.settings.auto_beautify_json, "Auto-beautify JSON in Popup");
                         
                         ui.separator();
+                        ui.heading("Keybinding Mode");
+                        egui::ComboBox::from_id_salt("keybinding_mode")
+                            .selected_text(self.settings.keybinding_mode.name())
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(
+                                    self.settings.keybinding_mode == KeybindingMode::Standard,
+                                    "Standard (Mouse/GUI)"
+                                ).clicked() {
+                                    self.settings.keybinding_mode = KeybindingMode::Standard;
+                                }
+                                if ui.selectable_label(
+                                    self.settings.keybinding_mode == KeybindingMode::Vim,
+                                    "Vim (Modal/Keyboard)"
+                                ).clicked() {
+                                    self.settings.keybinding_mode = KeybindingMode::Vim;
+                                }
+                            });
+                        ui.checkbox(&mut self.settings.show_profile_hud, "Show Column Profile HUD (Ctrl+B)");
+                        
+                        ui.separator();
                         ui.heading("Recent Files");
                         ui.add(egui::Slider::new(&mut self.settings.max_recent_files, 1..=20).text("Max Recent Files"));
                         if ui.button("Clear Recent Files").clicked() {
@@ -311,6 +350,9 @@ impl eframe::App for GuiApp {
                                 graph_y_col: 1.min(cols.saturating_sub(1)),
                                 graph_data: Vec::new(),
                                 grid: Some(grid),
+                                column_profile: None,
+                                vim_mode: VimMode::Normal,
+                                command_buffer: String::new(),
                             });
                             self.show_new_csv_dialog = false;
                         }
@@ -414,7 +456,7 @@ impl eframe::App for GuiApp {
                 });
             }
             AppState::Editor(state) => {
-                render_editor(state, ctx, &self.settings);
+                render_editor(state, ctx, &mut self.settings);
             }
         }
 
@@ -424,7 +466,7 @@ impl eframe::App for GuiApp {
     }
 }
 
-fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settings) {
+fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Settings) {
     // Override font size
     let mut style = (*ctx.style()).clone();
     style.text_styles.iter_mut().for_each(|(_, font_id)| {
@@ -545,6 +587,77 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                 }
             });
         });
+    }
+
+    // Ctrl+B toggle for Profile HUD
+    if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B)) {
+        settings.show_profile_hud = !settings.show_profile_hud;
+    }
+
+    // Profile HUD Side Panel (right side)
+    if settings.show_profile_hud {
+        egui::SidePanel::right("profile_hud")
+            .resizable(true)
+            .default_width(280.0)
+            .min_width(200.0)
+            .show(ctx, |ui| {
+                ui.heading("📊 Column Profile");
+                ui.separator();
+                
+                if let Some(ref profile) = state.column_profile {
+                    ui.label(format!("Column: {}", profile.header));
+                    ui.label(format!("Type: {}", profile.data_type.as_ref().map_or("Unknown", |t| t.name())));
+                    ui.separator();
+                    
+                    // Data health
+                    ui.collapsing("📋 Data Health", |ui| {
+                        ui.label(format!("Total Rows: {}", profile.total_count));
+                        ui.label(format!("Null/Empty: {} ({:.1}%)", profile.null_count, profile.null_percentage()));
+                        ui.label(format!("Unique Values: {}", profile.unique_count));
+                    });
+                    
+                    // Numeric stats (if applicable)
+                    if profile.min.is_some() {
+                        ui.separator();
+                        ui.collapsing("📈 Numeric Stats", |ui| {
+                            if let Some(min) = profile.min {
+                                ui.label(format!("Min: {:.4}", min));
+                            }
+                            if let Some(max) = profile.max {
+                                ui.label(format!("Max: {:.4}", max));
+                            }
+                            if let Some(mean) = profile.mean {
+                                ui.label(format!("Mean: {:.4}", mean));
+                            }
+                            if let Some(std) = profile.std_dev {
+                                ui.label(format!("Std Dev: {:.4}", std));
+                            }
+                            if let Some(sum) = profile.sum {
+                                ui.label(format!("Sum: {:.4}", sum));
+                            }
+                        });
+                    }
+                    
+                    // Top values
+                    if !profile.top_values.is_empty() {
+                        ui.separator();
+                        ui.collapsing("🏆 Top Values", |ui| {
+                            for (i, (val, count)) in profile.top_values.iter().enumerate() {
+                                let display_val = if val.len() > 25 {
+                                    format!("{}...", &val[..22])
+                                } else {
+                                    val.clone()
+                                };
+                                ui.label(format!("{}. {} ({})", i + 1, display_val, count));
+                            }
+                        });
+                    }
+                } else {
+                    ui.label("Select a column to view its profile.");
+                    ui.label("");
+                    ui.label("Click on a column header or select a cell to analyze that column.");
+                }
+            });
     }
 
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -726,6 +839,35 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
 
                                             if response.clicked() {
                                                 state.selected_cell = Some((row_index, col_index));
+                                                
+                                                // Update column profile if HUD is enabled
+                                                if settings.show_profile_hud {
+                                                    // Collect column values for analysis
+                                                    let header = if let Some(ref grid) = state.grid {
+                                                        grid.get_header(col_index).cloned().unwrap_or_else(|| format!("Column {}", col_index + 1))
+                                                    } else {
+                                                        format!("Column {}", col_index + 1)
+                                                    };
+                                                    
+                                                    let values: Vec<String> = if let Some(ref grid) = state.grid {
+                                                        (0..grid.num_rows())
+                                                            .filter_map(|r| grid.get_cell(r, col_index).cloned())
+                                                            .collect()
+                                                    } else {
+                                                        // For mmap files, sample up to 1000 rows
+                                                        let sample_size = total_rows.min(1000);
+                                                        (0..sample_size)
+                                                            .filter_map(|r| {
+                                                                state.reader.get_rows(r, 1).ok()
+                                                                    .and_then(|rows| rows.get(0).cloned())
+                                                                    .and_then(|line| CsvParser::parse_line(&line).ok())
+                                                                    .and_then(|fields| fields.get(col_index).cloned())
+                                                            })
+                                                            .collect()
+                                                    };
+                                                    
+                                                    state.column_profile = Some(ColumnAnalyzer::analyze_column(&header, col_index, &values));
+                                                }
                                             }
                                             
                                             if response.double_clicked() {
