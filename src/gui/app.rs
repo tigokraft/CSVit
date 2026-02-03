@@ -503,6 +503,27 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                     }
                 }
                 ui.separator();
+                // Undo/Redo buttons
+                let can_undo = state.grid.as_ref().map(|g| g.can_undo()).unwrap_or(false);
+                let can_redo = state.grid.as_ref().map(|g| g.can_redo()).unwrap_or(false);
+                let undo_count = state.grid.as_ref().map(|g| g.undo_count()).unwrap_or(0);
+                let redo_count = state.grid.as_ref().map(|g| g.redo_count()).unwrap_or(0);
+                
+                ui.add_enabled_ui(can_undo, |ui| {
+                    if ui.button(format!("↩ Undo ({})", undo_count)).clicked() {
+                        if let Some(ref mut grid) = state.grid {
+                            grid.undo();
+                        }
+                    }
+                });
+                ui.add_enabled_ui(can_redo, |ui| {
+                    if ui.button(format!("↪ Redo ({})", redo_count)).clicked() {
+                        if let Some(ref mut grid) = state.grid {
+                            grid.redo();
+                        }
+                    }
+                });
+                ui.separator();
                 if ui.button("💾 Save As").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("CSV", &["csv"])
@@ -590,6 +611,18 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                   }
              }
          }
+         
+         // Undo/Redo keyboard shortcuts (Ctrl+Z / Ctrl+Y)
+         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
+             if let Some(ref mut grid) = state.grid {
+                 grid.undo();
+             }
+         }
+         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) {
+             if let Some(ref mut grid) = state.grid {
+                 grid.redo();
+             }
+         }
 
          let row_height = settings.row_height;
 
@@ -645,11 +678,11 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                                         if is_editing {
                                             let response = ui.text_edit_singleline(&mut state.input_buffer);
                                             if response.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                                // Save to grid if available, otherwise to editor
                                                 if let Some(ref mut grid) = state.grid {
                                                     grid.set_cell(row_index, col_index, state.input_buffer.clone());
                                                 } else {
-                                                    state.editor.add_edit(row_index, col_index, state.input_buffer.clone());
+                                                    let old_value = field.clone();
+                                                    state.editor.add_edit(row_index, col_index, old_value, state.input_buffer.clone());
                                                 }
                                                 state.editing_cell = None;
                                             } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
@@ -816,7 +849,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &Settin
                 ui.add(egui::TextEdit::multiline(&mut text).desired_width(f32::INFINITY).desired_rows(10));
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
-                        state.editor.add_edit(r, c, text.clone());
+                        // Old value is empty since we don't track it in edit modal
+                        state.editor.add_edit(r, c, String::new(), text.clone());
                         state.edit_modal = None;
                     }
                     if ui.button("Cancel").clicked() {
