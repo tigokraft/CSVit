@@ -660,6 +660,35 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
             });
     }
 
+    // Vim mode status bar (bottom panel)
+    if settings.keybinding_mode == KeybindingMode::Vim {
+        egui::TopBottomPanel::bottom("vim_status_bar")
+            .exact_height(24.0)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // Mode indicator
+                    let (mode_text, mode_color) = match state.vim_mode {
+                        VimMode::Normal => ("-- NORMAL --", egui::Color32::from_rgb(100, 200, 100)),
+                        VimMode::Insert => ("-- INSERT --", egui::Color32::from_rgb(100, 150, 255)),
+                        VimMode::Visual => ("-- VISUAL --", egui::Color32::from_rgb(255, 150, 100)),
+                        VimMode::Command => (":", egui::Color32::from_rgb(200, 200, 100)),
+                    };
+                    ui.label(egui::RichText::new(mode_text).color(mode_color).strong().monospace());
+                    
+                    ui.separator();
+                    
+                    // Position indicator
+                    if let Some((r, c)) = state.selected_cell {
+                        ui.label(egui::RichText::new(format!("{}:{}", r + 1, c + 1)).monospace());
+                    }
+                    
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new("hjkl:move  i:insert  gg:top  G:bottom  0:start  $:end  Esc:normal").weak().small());
+                    });
+                });
+            });
+    }
+
     egui::CentralPanel::default().show(ctx, |ui| {
          ui.style_mut().text_styles = style.text_styles.clone(); // Apply font
          
@@ -692,36 +721,88 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
 
          // Keyboard Navigation
          if state.editing_cell.is_none() && state.edit_modal.is_none() {
+             // Vim mode: hjkl navigation (only in Normal mode)
+             let vim_mode_active = settings.keybinding_mode == KeybindingMode::Vim && state.vim_mode == VimMode::Normal;
+             
              if let Some((r, c)) = state.selected_cell {
-                 if ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                 // Arrow keys always work, hjkl only in Vim mode
+                 let move_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) 
+                     || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::J)));
+                 let move_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp))
+                     || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::K)));
+                 let move_right = ui.input(|i| i.key_pressed(egui::Key::ArrowRight))
+                     || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::L)));
+                 let move_left = ui.input(|i| i.key_pressed(egui::Key::ArrowLeft))
+                     || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::H)));
+                 
+                 // Vim shortcuts
+                 let go_top = vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::G) && !i.modifiers.shift);
+                 let go_bottom = vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::G) && i.modifiers.shift);
+                 let go_line_start = vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::Num0) || i.key_pressed(egui::Key::Home));
+                 let go_line_end = vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::Num4) && i.modifiers.shift); // $
+                 
+                 // Enter insert mode with 'i'
+                 let enter_insert = vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::I));
+                 
+                 if move_down {
                      let next_row = (r.min(total_rows - 1) + 1).min(total_rows - 1);
                      state.selected_cell = Some((next_row, c));
                      scroll_target = Some(next_row);
-                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                 } else if move_up {
                       let prev_row = r.saturating_sub(1);
                       state.selected_cell = Some((prev_row, c));
                       scroll_target = Some(prev_row);
-                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
+                 } else if move_right {
                       state.selected_cell = Some((r, (c + 1).min(num_cols - 1)));
                       scroll_target = Some(r);
-                 } else if ui.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                 } else if move_left {
                       state.selected_cell = Some((r, c.saturating_sub(1)));
                       scroll_target = Some(r);
+                 } else if go_top {
+                      state.selected_cell = Some((0, c));
+                      scroll_target = Some(0);
+                 } else if go_bottom {
+                      state.selected_cell = Some((total_rows.saturating_sub(1), c));
+                      scroll_target = Some(total_rows.saturating_sub(1));
+                 } else if go_line_start {
+                      state.selected_cell = Some((r, 0));
+                 } else if go_line_end {
+                      state.selected_cell = Some((r, num_cols.saturating_sub(1)));
+                 } else if enter_insert {
+                      state.vim_mode = VimMode::Insert;
+                      state.editing_cell = Some((r, c));
+                      state.input_buffer = load_content(state, r, c);
                  } else if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                       if settings.use_edit_modal {
                           let text = load_content(state, r, c);
                           state.edit_modal = Some((r, c, text));
                       } else {
+                          if vim_mode_active {
+                              state.vim_mode = VimMode::Insert;
+                          }
                           state.editing_cell = Some((r, c));
                           state.input_buffer = load_content(state, r, c);
                       }
                  }
              } else {
-                 // Initial selection on arrow key
-                  if ui.input(|i| i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowUp) || i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft)) {
+                 // Initial selection on arrow key or hjkl
+                  let any_nav = ui.input(|i| {
+                      i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowUp) || 
+                      i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft) ||
+                      (vim_mode_active && (i.key_pressed(egui::Key::H) || i.key_pressed(egui::Key::J) || 
+                                           i.key_pressed(egui::Key::K) || i.key_pressed(egui::Key::L)))
+                  });
+                  if any_nav {
                       state.selected_cell = Some((0, 0));
-                      scroll_target = Some(0); // Set scroll_target
+                      scroll_target = Some(0);
                   }
+             }
+         }
+         
+         // Exit insert mode with Escape (Vim mode)
+         if settings.keybinding_mode == KeybindingMode::Vim && state.vim_mode == VimMode::Insert {
+             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                 state.vim_mode = VimMode::Normal;
              }
          }
          
