@@ -83,11 +83,61 @@ pub enum KeybindingMode {
     Vim,       // Modal editing with hjkl, :commands, keyboard-first
 }
 
+
 impl KeybindingMode {
     pub fn name(&self) -> &'static str {
         match self {
             KeybindingMode::Standard => "Standard",
             KeybindingMode::Vim => "Vim",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub struct KeyCombo {
+    pub key: eframe::egui::Key,
+    pub modifiers: eframe::egui::Modifiers,
+}
+
+impl Default for KeyCombo {
+    fn default() -> Self {
+        Self {
+            key: eframe::egui::Key::Space,
+            modifiers: eframe::egui::Modifiers::NONE,
+        }
+    }
+}
+
+impl KeyCombo {
+    pub fn matches(&self, input: &eframe::egui::InputState) -> bool {
+        input.key_pressed(self.key) && input.modifiers == self.modifiers
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Keymap {
+    pub move_up: KeyCombo,
+    pub move_down: KeyCombo,
+    pub move_left: KeyCombo,
+    pub move_right: KeyCombo,
+    pub undo: KeyCombo,
+    pub redo: KeyCombo,
+    pub save: KeyCombo,
+    pub toggle_hud: KeyCombo,
+}
+
+impl Default for Keymap {
+    fn default() -> Self {
+        use eframe::egui::{Key, Modifiers};
+        Self {
+            move_up: KeyCombo { key: Key::ArrowUp, modifiers: Modifiers::NONE },
+            move_down: KeyCombo { key: Key::ArrowDown, modifiers: Modifiers::NONE },
+            move_left: KeyCombo { key: Key::ArrowLeft, modifiers: Modifiers::NONE },
+            move_right: KeyCombo { key: Key::ArrowRight, modifiers: Modifiers::NONE },
+            undo: KeyCombo { key: Key::Z, modifiers: Modifiers::COMMAND },
+            redo: KeyCombo { key: Key::Y, modifiers: Modifiers::COMMAND },
+            save: KeyCombo { key: Key::S, modifiers: Modifiers::COMMAND },
+            toggle_hud: KeyCombo { key: Key::B, modifiers: Modifiers::COMMAND },
         }
     }
 }
@@ -114,6 +164,8 @@ pub struct Settings {
     pub keybinding_mode: KeybindingMode,
     #[serde(default)]
     pub show_profile_hud: bool,
+    #[serde(default)]
+    pub keymap: Keymap,
 }
 
 fn default_max_recent() -> usize {
@@ -139,6 +191,7 @@ impl Default for Settings {
             font_family: default_font(),
             keybinding_mode: KeybindingMode::Standard,
             show_profile_hud: false,
+            keymap: Keymap::default(),
         }
     }
 }

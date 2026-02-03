@@ -9,7 +9,7 @@ clap = { version = "4.5.55", features = ["derive"] }
 csv = "1.4.0"
 directories = "6.0.0"
 eframe = "0.33.3"
-egui = "0.33.3"
+egui = { version = "0.33.3", features = ["serde"] }
 egui_extras = "0.33.3"
 egui_plot = "0.34.0"
 memmap2 = "0.9.9"
