@@ -7,6 +7,7 @@ use crate::backend::editor::EditBuffer;
 use crate::backend::parser::CsvParser;
 use crate::backend::analysis::{ColumnAnalyzer, ColumnProfile};
 use crate::backend::settings::{Settings, Theme, KeybindingMode};
+use directories::ProjectDirs;
 
 #[derive(PartialEq)]
 pub enum ViewMode {
@@ -66,16 +67,34 @@ pub struct GuiApp {
     show_new_csv_dialog: bool,
     new_csv_columns: usize,
     new_csv_rows: usize,
+    settings_window: crate::gui::windows::settings::SettingsWindow,
 }
 
 impl GuiApp {
     pub fn new(_cc: &eframe::CreationContext<'_>, loader: Option<Arc<CsvLoader>>, filename: Option<String>) -> Self {
         let mut settings = Settings::load();
         
-        let state = if let (Some(loader), Some(name)) = (loader, filename.clone()) {
-            if let Some(ref path) = filename {
-                settings.add_recent_file(path);
+        // Load custom themes if any
+        if let Some(config_dir) = ProjectDirs::from("com", "tigokraft", "csvit") {
+            let theme_dir = config_dir.config_dir().join("themes");
+            if theme_dir.exists() {
+                if let Ok(entries) = std::fs::read_dir(theme_dir) {
+                    for entry in entries.flatten() {
+                         if let Ok(content) = std::fs::read_to_string(entry.path()) {
+                             if let Ok(theme) = serde_json::from_str::<crate::backend::settings::CustomTheme>(&content) {
+                                 settings.custom_themes.push(theme);
+                             }
+                         }
+                    }
+                }
             }
+        }
+        
+        if let Some(ref path) = filename {
+            settings.add_recent_file(path);
+        }
+        
+        let state = if let Some(loader) = loader {
              AppState::Editor(EditorState {
                 loader: loader.clone(),
                 reader: PagedReader::new(loader.clone()),
@@ -83,12 +102,12 @@ impl GuiApp {
                 view_mode: ViewMode::Table,
                 input_buffer: String::new(),
                 editing_cell: None,
-                filename: name,
+                filename: filename.unwrap_or_else(|| "Unknown.csv".to_string()),
                 word_wrap: false,
                 json_modal: None,
                 num_columns: loader.num_columns(),
                 column_widths: loader.estimate_column_widths(),
-                selected_cell: None,
+                selected_cell: Some((0, 0)),
                 edit_modal: None,
                 graph_x_col: 0,
                 graph_y_col: 1,
@@ -107,8 +126,9 @@ impl GuiApp {
             settings,
             show_settings: false,
             show_new_csv_dialog: false,
-            new_csv_columns: 3,
+            new_csv_columns: 5,
             new_csv_rows: 10,
+            settings_window: crate::gui::windows::settings::SettingsWindow::new(),
         }
     }
 
@@ -196,118 +216,7 @@ impl eframe::App for GuiApp {
 
         // Settings Window
         if self.show_settings {
-             let mut open = true;
-             egui::Window::new("Settings")
-                .open(&mut open)
-                .resizable(true)
-                .min_width(350.0)
-                .show(ctx, |ui| {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        ui.heading("Theme");
-                        egui::ComboBox::from_id_salt("theme_selector")
-                            .selected_text(match &self.settings.theme {
-                                Theme::Custom(idx) => {
-                                    self.settings.custom_themes.get(*idx)
-                                        .map(|t| t.name.as_str())
-                                        .unwrap_or("Custom")
-                                }
-                                t => t.name(),
-                            })
-                            .show_ui(ui, |ui| {
-                                for theme in Theme::builtin_all() {
-                                    ui.selectable_value(&mut self.settings.theme, *theme, theme.name());
-                                }
-                                ui.separator();
-                                for (i, custom) in self.settings.custom_themes.iter().enumerate() {
-                                    ui.selectable_value(&mut self.settings.theme, Theme::Custom(i), &custom.name);
-                                }
-                            });
-                        
-                        ui.horizontal(|ui| {
-                            if ui.button("📂 Import Theme").clicked() {
-                                if let Some(path) = rfd::FileDialog::new()
-                                    .add_filter("JSON Theme", &["json"])
-                                    .pick_file()
-                                {
-                                    if let Ok(content) = std::fs::read_to_string(&path) {
-                                        if let Ok(theme) = serde_json::from_str::<crate::backend::settings::CustomTheme>(&content) {
-                                            self.settings.custom_themes.push(theme);
-                                            self.settings.save();
-                                        }
-                                    }
-                                }
-                            }
-                            if ui.button("🔄 Reload Themes").clicked() {
-                                self.settings.load_custom_themes();
-                            }
-                        });
-                        
-                        ui.separator();
-                        ui.heading("Font");
-                        egui::ComboBox::from_id_salt("font_selector")
-                            .selected_text(&self.settings.font_family)
-                            .show_ui(ui, |ui| {
-                                for font in Settings::available_fonts() {
-                                    let selected = self.settings.font_family == font;
-                                    if ui.selectable_label(selected, font).clicked() {
-                                        self.settings.font_family = font.to_string();
-                                    }
-                                }
-                            });
-                        
-                        ui.separator();
-                        ui.heading("Appearance");
-                        ui.add(egui::Slider::new(&mut self.settings.font_size, 10.0..=24.0).text("Font Size"));
-                        ui.add(egui::Slider::new(&mut self.settings.row_height, 20.0..=60.0).text("Row Height"));
-                        
-                        ui.separator();
-                        ui.heading("Behavior");
-                        ui.checkbox(&mut self.settings.use_edit_modal, "Use Popup for Editing");
-                        ui.checkbox(&mut self.settings.auto_beautify_json, "Auto-beautify JSON in Popup");
-                        
-                        ui.separator();
-                        ui.heading("Keybinding Mode");
-                        egui::ComboBox::from_id_salt("keybinding_mode")
-                            .selected_text(self.settings.keybinding_mode.name())
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(
-                                    self.settings.keybinding_mode == KeybindingMode::Standard,
-                                    "Standard (Mouse/GUI)"
-                                ).clicked() {
-                                    self.settings.keybinding_mode = KeybindingMode::Standard;
-                                }
-                                if ui.selectable_label(
-                                    self.settings.keybinding_mode == KeybindingMode::Vim,
-                                    "Vim (Modal/Keyboard)"
-                                ).clicked() {
-                                    self.settings.keybinding_mode = KeybindingMode::Vim;
-                                }
-                            });
-                        ui.checkbox(&mut self.settings.show_profile_hud, "Show Column Profile HUD (Ctrl+B)");
-                        
-                        ui.separator();
-                        ui.heading("Recent Files");
-                        ui.add(egui::Slider::new(&mut self.settings.max_recent_files, 1..=20).text("Max Recent Files"));
-                        if ui.button("Clear Recent Files").clicked() {
-                            self.settings.recent_files.clear();
-                        }
-                        
-                        ui.separator();
-                        ui.horizontal(|ui| {
-                             if ui.button("Save Settings").clicked() {
-                                 self.settings.save();
-                             }
-                             if ui.button("Reset to Defaults").clicked() {
-                                 Settings::reset();
-                                 self.settings = Settings::load();
-                             }
-                        });
-                    });
-                });
-             if !open {
-                 self.show_settings = false;
-                 self.settings.save();
-             }
+             self.settings_window.show(ctx, &mut self.show_settings, &mut self.settings);
         }
         // New CSV Dialog
         if self.show_new_csv_dialog {
@@ -590,7 +499,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
     }
 
     // Ctrl+B toggle for Profile HUD
-    if ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::B)) {
+    // Toggle Profile HUD
+    if ctx.input(|i| settings.keymap.toggle_hud.matches(i)) {
         settings.show_profile_hud = !settings.show_profile_hud;
     }
 
@@ -726,13 +636,13 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
              
              if let Some((r, c)) = state.selected_cell {
                  // Arrow keys always work, hjkl only in Vim mode
-                 let move_down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown)) 
+                 let move_down = ui.input(|i| settings.keymap.move_down.matches(i)) 
                      || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::J)));
-                 let move_up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp))
+                 let move_up = ui.input(|i| settings.keymap.move_up.matches(i))
                      || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::K)));
-                 let move_right = ui.input(|i| i.key_pressed(egui::Key::ArrowRight))
+                 let move_right = ui.input(|i| settings.keymap.move_right.matches(i))
                      || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::L)));
-                 let move_left = ui.input(|i| i.key_pressed(egui::Key::ArrowLeft))
+                 let move_left = ui.input(|i| settings.keymap.move_left.matches(i))
                      || (vim_mode_active && ui.input(|i| i.key_pressed(egui::Key::H)));
                  
                  // Vim shortcuts
@@ -787,8 +697,8 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
              } else {
                  // Initial selection on arrow key or hjkl
                   let any_nav = ui.input(|i| {
-                      i.key_pressed(egui::Key::ArrowDown) || i.key_pressed(egui::Key::ArrowUp) || 
-                      i.key_pressed(egui::Key::ArrowRight) || i.key_pressed(egui::Key::ArrowLeft) ||
+                      settings.keymap.move_down.matches(i) || settings.keymap.move_up.matches(i) || 
+                      settings.keymap.move_right.matches(i) || settings.keymap.move_left.matches(i) ||
                       (vim_mode_active && (i.key_pressed(egui::Key::H) || i.key_pressed(egui::Key::J) || 
                                            i.key_pressed(egui::Key::K) || i.key_pressed(egui::Key::L)))
                   });
@@ -806,13 +716,13 @@ fn render_editor(state: &mut EditorState, ctx: &egui::Context, settings: &mut Se
              }
          }
          
-         // Undo/Redo keyboard shortcuts (Ctrl+Z / Ctrl+Y)
-         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z)) {
+         // Undo/Redo keyboard shortcuts
+         if ui.input(|i| settings.keymap.undo.matches(i)) {
              if let Some(ref mut grid) = state.grid {
                  grid.undo();
              }
          }
-         if ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Y)) {
+         if ui.input(|i| settings.keymap.redo.matches(i)) {
              if let Some(ref mut grid) = state.grid {
                  grid.redo();
              }
